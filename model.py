@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 from streamlit_echarts import st_echarts
 import uuid
+import os
 
 from storage import add_idea, get_all, update_idea
 
