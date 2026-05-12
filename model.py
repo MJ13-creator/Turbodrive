@@ -33,10 +33,10 @@ def clean(x):
 # =========================================================
 # LOAD USER MASTER (EMAIL -> ROLE)
 # =========================================================
-user_df = pd.read_excel(
-    r"C:\Users\mjagadeesh\OneDrive - ALTEN Group\Permissions.xlsx",
-    sheet_name="Sheet1"
-)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+file_path = os.path.join(BASE_DIR, "Permissions.xlsx")
+
+user_df = pd.read_excel(file_path, sheet_name="Sheet1")
 
 # CLEAN COLUMN NAMES
 user_df.columns = [clean(c) for c in user_df.columns]
