@@ -21,69 +21,47 @@ import re
 # CLEAN FUNCTION
 # =========================================================
 def clean(x):
-
     if pd.isna(x):
         return None
 
     x = str(x).replace("\u00a0", "")
     x = x.strip().lower()
+    x = re.sub(r"\s+", " ", x)
 
-    return re.sub(r"\s+", " ", x)
-
-
-# =========================================================
-# LOAD PERMISSIONS DYNAMICALLY
-# =========================================================
-import requests
-from io import BytesIO
-
-PERMISSION_FILE_URL = r"C:\Users\mjagadeesh\OneDrive - ALTEN Group\Permissions.xlsx"
-
-
-@st.cache_data(ttl=60)
-def load_permissions():
-
-    response = requests.get(PERMISSION_FILE_URL)
-
-    if response.status_code != 200:
-        st.error(f"Failed to load permissions file: {response.status_code}")
-        st.stop()
-
-    excel_data = BytesIO(response.content)
-
-    df = pd.read_excel(
-        excel_data,
-        sheet_name="Sheet1"
-    )
-
-    # CLEAN COLUMN NAMES
-    df.columns = [clean(c) for c in df.columns]
-
-    # CLEAN VALUES
-    df["email"] = df["email"].apply(clean)
-    df["role"] = df["role"].apply(clean)
-
-    return df
-
-
-user_df = load_permissions()
+    return x
 
 
 # =========================================================
-# MANUAL REFRESH
+# LOAD USER MASTER (EMAIL -> ROLE)
 # =========================================================
-if st.sidebar.button("🔄 Refresh Permissions"):
-
-    st.cache_data.clear()
-    st.rerun()
-
 
 # =========================================================
-# CREATE MAP
+# IMPORT PERMISSION FUNCTIONS
 # =========================================================
+from storage import (
+    load_permissions,
+    add_user,
+    update_role,
+    delete_user
+)
+
+
+# =========================================================
+# LOAD PERMISSIONS
+# =========================================================
+permission_data = load_permissions()
+
+user_df = pd.DataFrame(permission_data)
+
+user_df.columns = [clean(c) for c in user_df.columns]
+
+user_df["email"] = user_df["email"].apply(clean)
+user_df["role"] = user_df["role"].apply(clean)
+
 email_role_map = dict(
     zip(user_df["email"], user_df["role"])
 )
+
 
 # =========================================================
 # ROLE -> PAGE ACCESS
@@ -95,7 +73,8 @@ role_page_map = {
         "PL Assignment",
         "Feasibility",
         "Approval",
-        "Dashboard"
+        "Dashboard",
+        "Admin"
     ],
 
     "normal user": [
