@@ -21,36 +21,56 @@ import re
 # CLEAN FUNCTION
 # =========================================================
 def clean(x):
+
     if pd.isna(x):
         return None
 
     x = str(x).replace("\u00a0", "")
     x = x.strip().lower()
-    x = re.sub(r"\s+", " ", x)
 
-    return x
+    return re.sub(r"\s+", " ", x)
 
 
 # =========================================================
-# LOAD USER MASTER (EMAIL -> ROLE)
+# LOAD PERMISSIONS DYNAMICALLY
 # =========================================================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-file_path = os.path.join(BASE_DIR, "Permissions.xlsx")
+PERMISSION_FILE_URL = "https://altengroup.sharepoint.com/:x:/r/sites/EFSLCE-CIandautomation/Documents%20partages/Permissions.xlsx?d=w4f625a92aa3c410792dbb1275a2ff130&csf=1&web=1&e=NXt4iq"
 
-user_df = pd.read_excel(file_path, sheet_name="Sheet1")
 
-# CLEAN COLUMN NAMES
-user_df.columns = [clean(c) for c in user_df.columns]
+@st.cache_data(ttl=60)
+def load_permissions():
 
-# CLEAN VALUES
-user_df["email"] = user_df["email"].apply(clean)
-user_df["role"] = user_df["role"].apply(clean)
+    df = pd.read_excel(
+        PERMISSION_FILE_URL,
+        sheet_name="Sheet1"
+    )
 
-# CREATE EMAIL -> ROLE MAP
+    df.columns = [clean(c) for c in df.columns]
+
+    df["email"] = df["email"].apply(clean)
+    df["role"] = df["role"].apply(clean)
+
+    return df
+
+
+user_df = load_permissions()
+
+
+# =========================================================
+# MANUAL REFRESH
+# =========================================================
+if st.sidebar.button("🔄 Refresh Permissions"):
+
+    st.cache_data.clear()
+    st.rerun()
+
+
+# =========================================================
+# CREATE MAP
+# =========================================================
 email_role_map = dict(
     zip(user_df["email"], user_df["role"])
 )
-
 
 # =========================================================
 # ROLE -> PAGE ACCESS
