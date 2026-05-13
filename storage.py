@@ -1,125 +1,139 @@
+# =========================================================
+# STORAGE.PY
+# COMPLETE COPY-PASTE VERSION
+# =========================================================
+
 import json
 import os
-from datetime import datetime
 
 # =========================================================
 # IDEA STORAGE
 # =========================================================
-
 IDEA_FILE = "ideas.json"
 
-# =========================================================
-# USER ACCESS STORAGE
-# =========================================================
 
-USER_FILE = "users.json"
-
-# =========================================================
-# IDEAS
-# =========================================================
-
-def load():
+def load_data():
 
     if not os.path.exists(IDEA_FILE):
-        return []
+
+        with open(IDEA_FILE, "w") as f:
+            json.dump([], f)
 
     with open(IDEA_FILE, "r") as f:
+
         return json.load(f)
 
-def save(data):
+
+def save_data(data):
 
     with open(IDEA_FILE, "w") as f:
+
         json.dump(data, f, indent=4)
+
 
 def add_idea(item):
 
-    data = load()
-
-    item["id"] = len(data) + 1
-
-    item["status"] = "New Idea"
-
-    item["created_at"] = datetime.now().isoformat()
+    data = load_data()
 
     data.append(item)
 
-    save(data)
+    save_data(data)
 
-def update_idea(id_, updates):
-
-    data = load()
-
-    for i in data:
-
-        if i["id"] == id_:
-
-            for k, v in updates.items():
-                i[k] = v
-
-    save(data)
 
 def get_all():
 
-    return load()
+    return load_data()
+
+
+def update_idea(idea_id, updates):
+
+    data = load_data()
+
+    for item in data:
+
+        if item["id"] == idea_id:
+
+            item.update(updates)
+
+    save_data(data)
+
 
 # =========================================================
-# USERS
+# PERMISSION STORAGE
 # =========================================================
+PERMISSION_FILE = "permissions.json"
 
-def load_users():
 
-    if not os.path.exists(USER_FILE):
+def load_permissions():
 
-        with open(USER_FILE, "w") as f:
-            json.dump([], f)
+    if not os.path.exists(PERMISSION_FILE):
 
-    with open(USER_FILE, "r") as f:
+        default_users = [
+
+            {
+                "email": "admin@company.com",
+                "role": "super user"
+            }
+
+        ]
+
+        with open(PERMISSION_FILE, "w") as f:
+
+            json.dump(default_users, f, indent=4)
+
+    with open(PERMISSION_FILE, "r") as f:
+
         return json.load(f)
 
-def save_users(users):
 
-    with open(USER_FILE, "w") as f:
-        json.dump(users, f, indent=4)
+def save_permissions(data):
 
-def add_user(user):
+    with open(PERMISSION_FILE, "w") as f:
 
-    users = load_users()
+        json.dump(data, f, indent=4)
 
-    users.append(user)
 
-    save_users(users)
+def add_user(email, role):
+
+    data = load_permissions()
+
+    exists = False
+
+    for x in data:
+
+        if x["email"] == email:
+            exists = True
+
+    if not exists:
+
+        data.append({
+            "email": email,
+            "role": role
+        })
+
+        save_permissions(data)
+
 
 def delete_user(email):
 
-    users = load_users()
+    data = load_permissions()
 
-    users = [
-        u for u in users
-        if u["email"].lower() != email.lower()
+    data = [
+        x for x in data
+        if x["email"] != email
     ]
 
-    save_users(users)
+    save_permissions(data)
 
-def update_user(email, updates):
 
-    users = load_users()
+def update_role(email, role):
 
-    for user in users:
+    data = load_permissions()
 
-        if user["email"].lower() == email.lower():
+    for x in data:
 
-            for k, v in updates.items():
-                user[k] = v
+        if x["email"] == email:
 
-    save_users(users)
+            x["role"] = role
 
-def get_user(email):
-
-    users = load_users()
-
-    for user in users:
-
-        if user["email"].lower() == email.lower():
-            return user
-
-    return None
+    save_permissions(data)
