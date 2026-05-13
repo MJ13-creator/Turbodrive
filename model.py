@@ -34,19 +34,32 @@ def clean(x):
 # =========================================================
 # LOAD PERMISSIONS DYNAMICALLY
 # =========================================================
-PERMISSION_FILE_URL = "https://altengroup.sharepoint.com/:x:/r/sites/EFSLCE-CIandautomation/Documents%20partages/Permissions.xlsx?d=w4f625a92aa3c410792dbb1275a2ff130&csf=1&web=1&e=NXt4iq"
+import requests
+from io import BytesIO
+
+PERMISSION_FILE_URL = "https://altengroup.sharepoint.com/:x:/r/sites/EFSLCE-CIandautomation/Documents%20partages/Permissions.xlsx?d=w4f625a92aa3c410792dbb1275a2ff130&csf=1&web=1&e=aPg0zM"
 
 
 @st.cache_data(ttl=60)
 def load_permissions():
 
+    response = requests.get(PERMISSION_FILE_URL)
+
+    if response.status_code != 200:
+        st.error(f"Failed to load permissions file: {response.status_code}")
+        st.stop()
+
+    excel_data = BytesIO(response.content)
+
     df = pd.read_excel(
-        PERMISSION_FILE_URL,
+        excel_data,
         sheet_name="Sheet1"
     )
 
+    # CLEAN COLUMN NAMES
     df.columns = [clean(c) for c in df.columns]
 
+    # CLEAN VALUES
     df["email"] = df["email"].apply(clean)
     df["role"] = df["role"].apply(clean)
 
