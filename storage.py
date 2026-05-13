@@ -71,7 +71,7 @@ def load_permissions():
         default_users = [
 
             {
-                "email": "admin@company.com",
+                "email": "ravi.manoharan@alten-india.com",
                 "role": "super user"
             }
 
