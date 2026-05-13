@@ -37,7 +37,7 @@ def clean(x):
 import requests
 from io import BytesIO
 
-PERMISSION_FILE_URL = "https://altengroup.sharepoint.com/:x:/r/sites/EFSLCE-CIandautomation/Documents%20partages/Permissions.xlsx?d=w4f625a92aa3c410792dbb1275a2ff130&csf=1&web=1&e=aPg0zM"
+PERMISSION_FILE_URL = ""C:\Users\mjagadeesh\OneDrive - ALTEN Group\Permissions.xlsx""
 
 
 @st.cache_data(ttl=60)
