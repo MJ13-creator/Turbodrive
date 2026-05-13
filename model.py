@@ -902,4 +902,101 @@ elif menu == "Dashboard":
 
     st.dataframe(table_df, use_container_width=True)
 
+
+elif menu == "Admin":
+
+    st.subheader("Admin Panel")
+
+    permission_data = load_permissions()
+
+    # ==============================
+    # ADD USER
+    # ==============================
+    st.markdown("### Add User")
+
+    with st.form("add_user"):
+
+        new_email = st.text_input("Email")
+        new_role = st.selectbox(
+            "Role",
+            [
+                "super user",
+                "normal user",
+                "automation engineer",
+                "automation pl",
+                "pl/spl"
+            ]
+        )
+
+        submitted = st.form_submit_button("Add User")
+
+    if submitted:
+
+        if new_email.strip() == "":
+
+            st.error("Email required")
+
+        else:
+
+            add_user(clean(new_email), clean(new_role))
+
+            st.success("User Added")
+
+            st.rerun()
+
+    st.divider()
+
+    # ==============================
+    # LIST USERS
+    # ==============================
+    st.markdown("### Existing Users")
+
+    permission_data = load_permissions()
+
+    roles = [
+        "super user",
+        "normal user",
+        "automation engineer",
+        "automation pl",
+        "pl/spl"
+    ]
+
+    for i, user in enumerate(permission_data):
+
+        st.markdown("---")
+
+        c1, c2, c3 = st.columns([4,3,2])
+
+        email = user["email"]
+        role = user["role"]
+
+        with c1:
+            st.write(email)
+
+        with c2:
+
+            updated_role = st.selectbox(
+                "Role",
+                roles,
+                index=roles.index(role) if role in roles else 0,
+                key=f"role_{i}_{email}"
+            )
+
+        with c3:
+
+            if st.button("Update", key=f"upd_{i}_{email}"):
+
+                update_role(clean(email), clean(updated_role))
+
+                st.success(f"Updated {email}")
+
+                st.rerun()
+
+            if st.button("Delete", key=f"del_{i}_{email}"):
+
+                delete_user(clean(email))
+
+                st.warning(f"Deleted {email}")
+
+                st.rerun()
     
