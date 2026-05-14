@@ -771,7 +771,7 @@ st.markdown(
 # =========================================================
 
 st.subheader("Ideation Tree")
-    def count(d, status):
+def count(d, status):
         return len(d[d["status"] == status])
 
     def reject(d, reason):
