@@ -860,6 +860,7 @@ def build_tree(d):
         ]
 
     customer_df = df[df["category"] == "Customer Requirement"]
+
     internal_df = df[df["category"] == "Internal"]
 
     tree = {
