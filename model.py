@@ -278,74 +278,265 @@ elif menu == "Dashboard":
     with c2:
         st.metric("Internal ROI", df[df["category"]=="Internal"]["roi"].sum())
 
-    # =====================================================
-    # CHART
-    # =====================================================
+    # =========================================================
+    # TREE
+    # =========================================================
+    st.subheader(" Ideation Tree")
 
-    left, right = st.columns(2)
+    def count(d, status):
+        return len(d[d["status"] == status])
 
-    queued = len(df[df["status"]=="New Idea"])
-    wip = len(df[df["status"].isin(["Assigned","WIP","UAT"])])
-    done = len(df[df["status"]=="Completed"])
+    def reject(d, reason):
+        return len(d[
+            (d["status"] == "Rejected") &
+            (d["rejection_reason"] == reason)
+        ])
 
-    with left:
+    def build_tree(d):
 
-        option = {
-            "series": [{
-                "type": "pie",
-                "radius": ["55%","80%"],
-                "data": [
-                    {"value": queued, "name": "Queued"},
-                    {"value": wip, "name": "WIP"},
-                    {"value": done, "name": "Completed"}
+        return [
+
+            {
+                "name": f"Queued ({count(d,'New Idea')})",
+                "label": {
+                    "backgroundColor": "#2563EB",
+                    "color": "#FFFFFF",
+                    "borderColor": "#60A5FA"
+                }
+            },
+
+            {
+                "name": f"Feasibility ({count(d,'Assigned')})",
+                "label": {
+                    "backgroundColor": "#2563EB",
+                    "color": "#FFFFFF",
+                    "borderColor": "#60A5FA"
+                }
+            },
+
+            {
+                "name": f"WIP ({count(d,'WIP')})",
+                "label": {
+                    "backgroundColor": "#16A34A",
+                    "color": "#FFFFFF",
+                    "borderColor": "#4ADE80"
+                }
+            },
+
+            {
+                "name": f"UAT ({count(d,'UAT')})",
+                "label": {
+                    "backgroundColor": "#16A34A",
+                    "color": "#FFFFFF",
+                    "borderColor": "#4ADE80"
+                }
+            },
+
+            {
+                "name": f"Completed ({count(d,'Completed')})",
+                "label": {
+                    "backgroundColor": "#16A34A",
+                    "color": "#FFFFFF",
+                    "borderColor": "#4ADE80"
+                }
+            },
+
+            {
+                "name": f"Rejected ({count(d,'Rejected')})",
+                "label": {
+                    "backgroundColor": "#16A34A",
+                    "color": "#FFFFFF",
+                    "borderColor": "#4ADE80"
+                },
+
+                "children": [
+
+                    {
+                        "name": f"Technical ({reject(d,'Technical Rejection')})",
+                        "label": {
+                            "backgroundColor": "#16A34A",
+                            "color": "#FFFFFF",
+                            "borderColor": "#4ADE80"
+                        }
+                    },
+
+                    {
+                        "name": f"Business ({reject(d,'Business Rejection')})",
+                        "label": {
+                            "backgroundColor": "#16A34A",
+                            "color": "#FFFFFF",
+                            "borderColor": "#4ADE80"
+                        }
+                    }
                 ]
-            }]
-        }
+            }
+        ]
 
-        st_echarts(option, height="350px")
+    customer_df = df[df["category"] == "Customer Requirement"]
+    internal_df = df[df["category"] == "Internal"]
 
-    with right:
+    tree = {
 
-        st.metric("Queued", queued)
-        st.metric("WIP", wip)
-        st.metric("Completed", done)
+        "name": f"EFS IDEATION ({len(df)})",
 
-    # =====================================================
-    # 🔥 KANBAN BOARD (RESTORED)
-    # =====================================================
+        "label": {
+            "backgroundColor": "#EA580C",
+            "color": "#FFFFFF",
+            "borderColor": "#FDBA74"
+        },
 
-    st.subheader("Kanban Board")
+        "children": [
 
-    statuses = ["New Idea","Assigned","WIP","UAT","Completed","Rejected"]
+            {
+                "name": f"Customer ({len(customer_df)})",
+
+                "label": {
+                    "backgroundColor": "#EA580C",
+                    "color": "#FFFFFF",
+                    "borderColor": "#FDBA74"
+                },
+
+                "children": build_tree(customer_df)
+            },
+
+            {
+                "name": f"Internal ({len(internal_df)})",
+
+                "label": {
+                    "backgroundColor": "#EA580C",
+                    "color": "#FFFFFF",
+                    "borderColor": "#FDBA74"
+                },
+
+                "children": build_tree(internal_df)
+            }
+        ]
+    }
+
+    option = {
+
+        "backgroundColor": "#0B0B0D",
+
+        "series": [{
+
+            "type": "tree",
+
+            "data": [tree],
+
+            "symbol": "roundRect",
+
+            "orient": "LR",
+
+            "expandAndCollapse": True,
+
+            "initialTreeDepth": -1,
+
+            "top": "5%",
+            "bottom": "5%",
+            "left": "18%",
+            "right": "20%",
+
+            "label": {
+
+                "color": "#FFFFFF",
+
+                "fontSize": 11,
+
+                "fontWeight": "bold",
+
+                "backgroundColor": "#1E1E24",
+
+                "borderColor": "#FF6A00",
+
+                "borderWidth": 2,
+
+                "borderRadius": 6,
+
+                "padding": [6, 12],
+
+                "width": 170,
+
+                "lineHeight": 18,
+
+                "overflow": "break",
+
+                "distance": 40,
+
+                "formatter": "{b}"
+            },
+
+            "leaves": {
+
+                "label": {
+
+                    "width": 170,
+
+                    "overflow": "break"
+                }
+            },
+
+            "lineStyle": {
+
+                "color": "#FF6A00",
+
+                "width": 2
+            },
+
+            "emphasis": {
+
+                "focus": "descendant",
+
+                "label": {
+
+                    "backgroundColor": "#FF6A00",
+
+                    "color": "#000"
+                }
+            }
+        }]
+    }
+
+    st_echarts(option, height="550px")
+
+    st.divider()
+
+    # =========================================================
+    # KANBAN BOARD
+    # =========================================================
+    st.subheader("Kanban Planner Board")
+
+    statuses = ["New Idea", "Assigned", "WIP", "UAT", "Completed", "Rejected"]
 
     cols = st.columns(len(statuses))
 
-    for i, s in enumerate(statuses):
+    for i, stage in enumerate(statuses):
 
         with cols[i]:
 
-            st.markdown(f"### {s}")
+            st.markdown(f"### {stage}")
 
-            sub = df[df["status"] == s]
+            stage_df = df[df["status"] == stage] if not df.empty else pd.DataFrame()
 
-            for _, r in sub.iterrows():
+            for _, row in stage_df.iterrows():
 
-                with st.expander(r["idea_name"]):
+                with st.expander(str(row.get("idea_name","No Idea Name"))):
 
-                    st.write(r["name"])
-                    st.write(r["project"])
+                    st.write(f"👤 {row.get('name','-')}")
+                    st.write(f"📌 {row.get('project','-')}")
 
                     new_status = st.selectbox(
-                        "Move",
+                        "Move to",
                         statuses,
-                        index=statuses.index(s),
-                        key=f"k_{r['id']}"
+                        index=statuses.index(row["status"]),
+                        key=f"kanban_{row['id']}"
                     )
 
-                    if st.button("Update", key=f"u_{r['id']}"):
+                    if st.button("Update", key=f"btn_{row['id']}"):
 
-                        update_idea(r["id"], {"status": new_status})
+                        update_idea(row["id"], {"status": new_status})
                         st.rerun()
+
+    st.divider()
 
     # =========================================================
     # DETAILS TABLE
