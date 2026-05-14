@@ -347,6 +347,27 @@ elif menu == "Dashboard":
                         update_idea(r["id"], {"status": new_status})
                         st.rerun()
 
+    # =========================================================
+    # DETAILS TABLE
+    # =========================================================
+    st.subheader("Details Table")
+
+    table_df = df.copy()
+
+    cols = []
+
+    for c in table_df.columns:
+        cols.append(c)
+
+        if c == "status":
+            break
+
+    table_df = table_df[cols]
+
+    st.dataframe(table_df, use_container_width=True)
+
+    
+
 # =========================================================
 # ADMIN
 # =========================================================
