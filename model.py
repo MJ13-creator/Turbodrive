@@ -604,19 +604,140 @@ elif menu == "Dashboard":
     # =========================================================
     # KPI METRICS
     # =========================================================
-    c1, c2 = st.columns(2)
+    # =========================================================
+# KPI ROW
+# =========================================================
 
-    with c1:
-        st.metric(
-            "Customer ROI",
-            round(df[df["category"]=="Customer Requirement"]["roi"].sum(), 2)
-        )
+c1, c2 = st.columns(2)
 
-    with c2:
-        st.metric(
-            "Internal ROI",
-            round(df[df["category"]=="Internal"]["roi"].sum(), 2)
+with c1:
+    st.metric(
+        "Customer ROI",
+        round(
+            df[df["category"] == "Customer Requirement"]["roi"].sum(),
+            2
         )
+    )
+
+with c2:
+    st.metric(
+        "Internal ROI",
+        round(
+            df[df["category"] == "Internal"]["roi"].sum(),
+            2
+        )
+    )
+
+# =========================================================
+# CHART ROW BELOW KPI
+# =========================================================
+
+left, right = st.columns([1, 1])
+
+# =========================================================
+# SEMI PIE CHART
+# =========================================================
+with left:
+
+    st.markdown("### Execution Progress")
+
+    queued_count = len(df[df["status"] == "New Idea"])
+
+    wip_count = len(df[
+        df["status"].isin([
+            "Assigned",
+            "WIP",
+            "UAT"
+        ])
+    ])
+
+    completed_count = len(df[df["status"] == "Completed"])
+
+    chart_data = [
+        {"value": queued_count, "name": "Queued"},
+        {"value": wip_count, "name": "WIP"},
+        {"value": completed_count, "name": "Completed"},
+    ]
+
+    total = sum(x["value"] for x in chart_data)
+
+    semi_pie_option = {
+
+        "backgroundColor": "#0B0B0D",
+
+        "tooltip": {
+            "trigger": "item"
+        },
+
+        "legend": {
+            "bottom": 0,
+            "textStyle": {
+                "color": "#FFFFFF"
+            }
+        },
+
+        "series": [
+            {
+                "type": "pie",
+
+                "startAngle": 180,
+
+                "radius": ["55%", "80%"],
+
+                "center": ["50%", "70%"],
+
+                "label": {
+                    "show": True,
+                    "formatter": "{b}\n{c}",
+                    "color": "#FFFFFF",
+                    "fontWeight": "bold"
+                },
+
+                "data": chart_data + [
+                    {
+                        "value": total,
+                        "itemStyle": {
+                            "color": "none"
+                        },
+                        "label": {
+                            "show": False
+                        },
+                        "tooltip": {
+                            "show": False
+                        }
+                    }
+                ],
+
+                "itemStyle": {
+                    "borderRadius": 10,
+                    "borderColor": "#0B0B0D",
+                    "borderWidth": 4
+                },
+
+                "color": [
+                    "#3B82F6",
+                    "#F59E0B",
+                    "#22C55E"
+                ]
+            }
+        ]
+    }
+
+    st_echarts(
+        options=semi_pie_option,
+        height="350px"
+    )
+
+# =========================================================
+# RIGHT SIDE (OPTIONAL)
+# =========================================================
+with right:
+
+    st.markdown("### Quick Summary")
+
+    st.metric("Queued", queued_count)
+    st.metric("WIP", wip_count)
+    st.metric("Completed", completed_count)
 
     st.divider()
     st.markdown(" 🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️")
