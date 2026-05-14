@@ -780,7 +780,7 @@ def reject(d, reason):
             (d["rejection_reason"] == reason)
         ])
 
-    def build_tree(d):
+def build_tree(d):
         return [
 
             {
