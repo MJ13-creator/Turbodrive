@@ -601,11 +601,8 @@ elif menu == "Dashboard":
     df["rejection_reason"] = df["rejection_reason"].fillna("")
     df["roi"] = pd.to_numeric(df["roi"], errors="coerce").fillna(0)
 
-    # =========================================================
-    # KPI METRICS
-    # =========================================================
-    # =========================================================
-# KPI ROW
+# =========================================================
+# KPI METRICS
 # =========================================================
 
 c1, c2 = st.columns(2)
@@ -637,29 +634,45 @@ left, right = st.columns([1, 1])
 # =========================================================
 # SEMI PIE CHART
 # =========================================================
+
 with left:
 
     st.markdown("### Execution Progress")
 
-    queued_count = len(df[df["status"] == "New Idea"])
+    queued_count = len(
+        df[df["status"] == "New Idea"]
+    )
 
-    wip_count = len(df[
-        df["status"].isin([
+    wip_count = len(
+        df[df["status"].isin([
             "Assigned",
             "WIP",
             "UAT"
-        ])
-    ])
+        ])]
+    )
 
-    completed_count = len(df[df["status"] == "Completed"])
+    completed_count = len(
+        df[df["status"] == "Completed"]
+    )
 
     chart_data = [
-        {"value": queued_count, "name": "Queued"},
-        {"value": wip_count, "name": "WIP"},
-        {"value": completed_count, "name": "Completed"},
+        {
+            "value": queued_count,
+            "name": "Queued"
+        },
+        {
+            "value": wip_count,
+            "name": "WIP"
+        },
+        {
+            "value": completed_count,
+            "name": "Completed"
+        }
     ]
 
-    total = sum(x["value"] for x in chart_data)
+    total = sum(
+        item["value"] for item in chart_data
+    )
 
     semi_pie_option = {
 
@@ -694,14 +707,18 @@ with left:
                 },
 
                 "data": chart_data + [
+
                     {
                         "value": total,
+
                         "itemStyle": {
                             "color": "none"
                         },
+
                         "label": {
                             "show": False
                         },
+
                         "tooltip": {
                             "show": False
                         }
@@ -729,8 +746,9 @@ with left:
     )
 
 # =========================================================
-# RIGHT SIDE (OPTIONAL)
+# RIGHT SIDE SUMMARY
 # =========================================================
+
 with right:
 
     st.markdown("### Quick Summary")
@@ -738,19 +756,21 @@ with right:
     st.metric("Queued", queued_count)
     st.metric("WIP", wip_count)
     st.metric("Completed", completed_count)
- # =========================================================
-# NOW BACK TO DASHBOARD LEVEL
+
+# =========================================================
+# DIVIDER
 # =========================================================
 
 st.divider()
 
-st.markdown("🏎️🏎️🏎️🏎️🏎️")
-
+st.markdown(
+    "🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️🏎️"
+)
 # =========================================================
 # TREE
 # =========================================================
 
-st.subheader("Ideation Tree")
+      st.subheader("Ideation Tree")
     def count(d, status):
         return len(d[d["status"] == status])
 
@@ -761,7 +781,6 @@ st.subheader("Ideation Tree")
         ])
 
     def build_tree(d):
-
         return [
 
             {
