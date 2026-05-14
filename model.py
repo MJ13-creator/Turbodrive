@@ -774,7 +774,7 @@ st.subheader("Ideation Tree")
 def count(d, status):
         return len(d[d["status"] == status])
 
-    def reject(d, reason):
+def reject(d, reason):
         return len(d[
             (d["status"] == "Rejected") &
             (d["rejection_reason"] == reason)
