@@ -770,7 +770,7 @@ st.markdown(
 # TREE
 # =========================================================
 
-      st.subheader("Ideation Tree")
+st.subheader("Ideation Tree")
     def count(d, status):
         return len(d[d["status"] == status])
 
