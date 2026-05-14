@@ -751,7 +751,6 @@ st.markdown("🏎️🏎️🏎️🏎️🏎️")
 # =========================================================
 
 st.subheader("Ideation Tree")
-
     def count(d, status):
         return len(d[d["status"] == status])
 
