@@ -278,6 +278,38 @@ elif menu == "Dashboard":
     with c2:
         st.metric("Internal ROI", df[df["category"]=="Internal"]["roi"].sum())
 
+    # =====================================================
+    # CHART
+    # =====================================================
+
+    left, right = st.columns(2)
+
+    queued = len(df[df["status"]=="New Idea"])
+    wip = len(df[df["status"].isin(["Assigned","WIP","UAT"])])
+    done = len(df[df["status"]=="Completed"])
+
+    with left:
+
+        option = {
+            "series": [{
+                "type": "pie",
+                "radius": ["55%","80%"],
+                "data": [
+                    {"value": queued, "name": "Queued"},
+                    {"value": wip, "name": "WIP"},
+                    {"value": done, "name": "Completed"}
+                ]
+            }]
+        }
+
+        st_echarts(option, height="350px")
+
+    with right:
+
+        st.metric("Queued", queued)
+        st.metric("WIP", wip)
+        st.metric("Completed", done)
+
     # =========================================================
     # TREE
     # =========================================================
