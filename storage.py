@@ -1,10 +1,26 @@
 # =========================================================
 # STORAGE.PY
-# COMPLETE COPY-PASTE VERSION
+# COMPLETE UPDATED COPY-PASTE VERSION
 # =========================================================
 
 import json
 import os
+import re
+
+# =========================================================
+# CLEAN FUNCTION
+# =========================================================
+def clean(x):
+
+    if x is None:
+        return ""
+
+    x = str(x).replace("\u00a0", "")
+    x = x.strip().lower()
+    x = re.sub(r"\s+", " ", x)
+
+    return x
+
 
 # =========================================================
 # IDEA STORAGE
@@ -83,7 +99,23 @@ def load_permissions():
 
     with open(PERMISSION_FILE, "r") as f:
 
-        return json.load(f)
+        data = json.load(f)
+
+    # =====================================================
+    # CLEAN ALL USERS
+    # =====================================================
+    cleaned_data = []
+
+    for user in data:
+
+        cleaned_data.append({
+
+            "email": clean(user.get("email", "")),
+            "role": clean(user.get("role", ""))
+
+        })
+
+    return cleaned_data
 
 
 def save_permissions(data):
@@ -93,20 +125,27 @@ def save_permissions(data):
         json.dump(data, f, indent=4)
 
 
+# =========================================================
+# ADD USER
+# =========================================================
 def add_user(email, role):
 
     data = load_permissions()
+
+    email = clean(email)
+    role = clean(role)
 
     exists = False
 
     for x in data:
 
-        if x["email"] == email:
+        if clean(x["email"]) == email:
             exists = True
 
     if not exists:
 
         data.append({
+
             "email": email,
             "role": role
         })
@@ -114,25 +153,37 @@ def add_user(email, role):
         save_permissions(data)
 
 
+# =========================================================
+# DELETE USER
+# =========================================================
 def delete_user(email):
 
     data = load_permissions()
 
+    email = clean(email)
+
     data = [
+
         x for x in data
-        if x["email"] != email
+        if clean(x["email"]) != email
     ]
 
     save_permissions(data)
 
 
+# =========================================================
+# UPDATE ROLE
+# =========================================================
 def update_role(email, role):
 
     data = load_permissions()
 
+    email = clean(email)
+    role = clean(role)
+
     for x in data:
 
-        if x["email"] == email:
+        if clean(x["email"]) == email:
 
             x["role"] = role
 
