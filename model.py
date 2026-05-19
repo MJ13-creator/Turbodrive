@@ -141,7 +141,7 @@ email_input = st.sidebar.text_input("Enter Email ID")
 
 user_email = clean(email_input)
 
-role = email_role_map.get(user_email)
+role = get_user_role(user_email, email_role_map)
 
 # =========================================================
 # AUTH
