@@ -758,46 +758,43 @@ elif menu == "Dashboard":
        width="100%"
    )
    st.divider()
-   # =========================================================
-   # KANBAN BOARD
-   # =========================================================
-   st.subheader("Kanban Planner Board")
-   statuses = [
-       "New Idea",
-       "Assigned",
-       "WIP",
-       "UAT",
-       "Completed",
-       "Rejected"
-   ]
-   cols = st.columns(len(statuses))
-   for i, stage in enumerate(statuses):
-       with cols[i]:
-           st.markdown(f"### {stage}")
-           stage_df = df[df["status"] == stage]
-           for _, row in stage_df.iterrows():
-               with st.container(border=True):
-                   st.markdown(
-                       f"#### {row.get('idea_name', 'No Idea')}"
-                   )
-                   st.write(f"👤 {row.get('name','-')}")
-                   st.write(f"📌 {row.get('project','-')}")
-                   new_status = st.selectbox(
-                       "Move to",
-                       statuses,
-                       index=statuses.index(row["status"]),
-                       key=f"kanban_{row['id']}"
-                   )
-                   if st.button(
-                       "Update",
-                       key=f"btn_{row['id']}"
-                   ):
-                       update_idea(
-                           row["id"],
-                           {"status": new_status}
-                       )
-                       st.rerun()
-   st.divider()
+    # =========================================================
+    # KANBAN BOARD
+    # =========================================================
+    st.subheader("Kanban Planner Board")
+
+    statuses = ["New Idea", "Assigned", "WIP", "UAT", "Completed", "Rejected"]
+
+    cols = st.columns(len(statuses))
+
+    for i, stage in enumerate(statuses):
+
+        with cols[i]:
+
+            st.markdown(f"### {stage}")
+
+            stage_df = df[df["status"] == stage] if not df.empty else pd.DataFrame()
+
+            for _, row in stage_df.iterrows():
+
+                with st.expander(str(row.get("idea_name","No Idea Name"))):
+
+                    st.write(f"👤 {row.get('name','-')}")
+                    st.write(f"📌 {row.get('project','-')}")
+
+                    new_status = st.selectbox(
+                        "Move to",
+                        statuses,
+                        index=statuses.index(row["status"]),
+                        key=f"kanban_{row['id']}"
+                    )
+
+                    if st.button("Update", key=f"btn_{row['id']}"):
+
+                        update_idea(row["id"], {"status": new_status})
+                        st.rerun()
+
+    st.divider()
    # =========================================================
    # DETAILS TABLE
    # =========================================================
