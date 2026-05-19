@@ -70,16 +70,23 @@ def clean_df(df):
 # =========================================================
 permission_data = load_permissions()
 
-for user in permission_data:
-    user["email"] = str(user.get("email", "")).strip().lower()
-    user["role"] = str(user.get("role", "")).strip().lower()
-
 user_df = pd.DataFrame(permission_data)
 
-email_role_map = {
-    u["email"]: u["role"]
-    for u in permission_data
-}
+if not user_df.empty:
+
+    user_df.columns = [clean(c) for c in user_df.columns]
+
+    user_df["email"] = user_df["email"].apply(clean)
+    user_df["role"] = user_df["role"].apply(clean)
+
+else:
+
+    user_df = pd.DataFrame(columns=["email", "role"])
+
+email_role_map = dict(
+    zip(user_df["email"], user_df["role"])
+)
+
 # =========================================================
 # ROLE ACCESS
 # =========================================================
@@ -130,28 +137,13 @@ st.markdown(
 # =========================================================
 # LOGIN
 # =========================================================
-SUPER_USERS = {
-    "ravi.manoharan@alten-india.com"
-}
-
-def get_user_role(email, role_map):
-
-    email = email.strip().lower()
-
-    # ADMIN OVERRIDE
-    if email in SUPER_USERS:
-        return "super user"
-
-    return role_map.get(email)
-
-
 st.sidebar.title("Login")
 
 email_input = st.sidebar.text_input("Enter Email ID")
 
 user_email = clean(email_input)
 
-role = get_user_role(user_email, email_role_map)
+role = email_role_map.get(user_email)
 
 # =========================================================
 # AUTH
