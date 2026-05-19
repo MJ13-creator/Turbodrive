@@ -70,21 +70,16 @@ def clean_df(df):
 # =========================================================
 permission_data = load_permissions()
 
-# normalize EVERYTHING from GitHub
-clean_permissions = []
-
 for user in permission_data:
+    user["email"] = str(user.get("email", "")).strip().lower()
+    user["role"] = str(user.get("role", "")).strip().lower()
 
-    clean_permissions.append({
-        "email": str(user.get("email", "")).strip().lower(),
-        "role": str(user.get("role", "")).strip().lower()
-    })
+user_df = pd.DataFrame(permission_data)
 
 email_role_map = {
     u["email"]: u["role"]
-    for u in clean_permissions
+    for u in permission_data
 }
-
 # =========================================================
 # ROLE ACCESS
 # =========================================================
