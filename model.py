@@ -173,57 +173,70 @@ menu = st.sidebar.selectbox(
 # =========================================================
 # SUBMIT IDEA
 # =========================================================
-with st.form("submit_form"):
+if menu == "Submit Idea":
 
-    name = st.text_input("Idea submitter name")
-    idea_name = st.text_input("Idea Name")
-    idea = st.text_area("Idea")
+    st.subheader("Submit Idea")
 
-    project = st.selectbox(
-        "Project",
-        ["CA-MRO","BA-MRO","BA-LCE","CA-LCE","Controls","Technical Response"]
-    )
+    pl_users = [
+        u["email"]
+        for u in permission_data
+        if u.get("role") in ["pl/spl", "automation pl"]
+    ]
 
-    category = st.selectbox(
-        "Type",
-        ["Customer Requirement","Internal"]
-    )
+    pl_users = sorted(list(set(pl_users)))
 
-    pl_name = st.selectbox(
-        "PL / SPL Name",
-        pl_users
-    )
+    with st.form("submit_form"):
 
-    submit = st.form_submit_button("Submit")
+        name = st.text_input("Idea submitter name")
+        idea_name = st.text_input("Idea Name")
+        idea = st.text_area("Idea")
 
-# 👇 THIS MUST BE OUTSIDE BUT STILL AFTER FORM
-if submit:
+        project = st.selectbox(
+            "Project",
+            ["CA-MRO","BA-MRO","BA-LCE","CA-LCE","Controls","Technical Response"]
+        )
 
-    add_idea({
-        "id": str(uuid.uuid4()),
-        "name": name,
-        "idea_name": idea_name,
-        "idea": idea,
-        "project": project,
-        "category": category,
-        "pl_name": pl_name,
-        "status": "New Idea",
-        "roi": 0,
-        "assigned_engineer": "",
-        "feasibility_data": {},
-        "feasibility_comments": "",
-        "decision": "",
-        "rejection_reason": "",
-        "approval_comment": "",
-        "created_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "assigned_date": "",
-        "wip_date": "",
-        "uat_date": "",
-        "completion_date": ""
-    })
+        category = st.selectbox(
+            "Type",
+            ["Customer Requirement","Internal"]
+        )
 
-    st.success("Idea Submitted Successfully ✅")
-    st.rerun()
+        pl_name = st.selectbox(
+            "PL / SPL Name",
+            pl_users
+        )
+
+        # ✅ MUST be INSIDE form
+        submit = st.form_submit_button("Submit")
+
+    # ✅ OUTSIDE form
+    if submit:
+
+        add_idea({
+            "id": str(uuid.uuid4()),
+            "name": name,
+            "idea_name": idea_name,
+            "idea": idea,
+            "project": project,
+            "category": category,
+            "pl_name": pl_name,
+            "status": "New Idea",
+            "roi": 0,
+            "assigned_engineer": "",
+            "feasibility_data": {},
+            "feasibility_comments": "",
+            "decision": "",
+            "rejection_reason": "",
+            "approval_comment": "",
+            "created_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "assigned_date": "",
+            "wip_date": "",
+            "uat_date": "",
+            "completion_date": ""
+        })
+
+        st.success("Idea Submitted Successfully ✅")
+        st.rerun()
 
 # =========================================================
 # PL ASSIGNMENT
