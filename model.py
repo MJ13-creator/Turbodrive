@@ -653,10 +653,9 @@ elif menu == "Dashboard":
         ])
 
     def build_tree(d):
+        return [
 
-    return [
-
-        {
+         {
             "name": f"Queued / Feasibility Study ({count(d,'New Idea') + count(d,'Assigned')})",
             "label": {
                 "backgroundColor": "#2563EB",  # Blue
@@ -707,6 +706,7 @@ elif menu == "Dashboard":
             ]
         }
     ]
+
 
     customer_df = df[df["category"] == "Customer Requirement"]
     internal_df = df[df["category"] == "Internal"]
