@@ -744,7 +744,7 @@ st.divider()
     # =========================================================
     # KANBAN BOARD
     # =========================================================
-    st.subheader("Kanban Planner Board")
+st.subheader("Kanban Planner Board")
 
     statuses = ["New Idea", "Assigned", "WIP", "UAT", "Completed", "Rejected"]
 
