@@ -652,85 +652,61 @@ elif menu == "Dashboard":
             (d["rejection_reason"] == reason)
         ])
 
-    def build_tree(d):
+def build_tree(d):
 
-        return [
+    return [
 
-            {
-                "name": f"Queued ({count(d,'New Idea')})",
-                "label": {
-                    "backgroundColor": "#2563EB",
-                    "color": "#FFFFFF",
-                    "borderColor": "#60A5FA"
-                }
+        {
+            "name": f"Queued / Feasibility Study ({count(d,'New Idea') + count(d,'Assigned')})",
+            "label": {
+                "backgroundColor": "#2563EB",  # Blue
+                "color": "#FFFFFF"
             },
 
-            {
-                "name": f"Feasibility ({count(d,'Assigned')})",
-                "label": {
-                    "backgroundColor": "#2563EB",
-                    "color": "#FFFFFF",
-                    "borderColor": "#60A5FA"
-                }
-            },
+            "children": [
 
-            {
-                "name": f"WIP ({count(d,'WIP')})",
-                "label": {
-                    "backgroundColor": "#16A34A",
-                    "color": "#FFFFFF",
-                    "borderColor": "#4ADE80"
-                }
-            },
+                {
+                    "name": f"Customer ({len(d[d['category']=='Customer Requirement'])})",
+                    "label": {"backgroundColor": "#16A34A"},  # Green
 
-            {
-                "name": f"UAT ({count(d,'UAT')})",
-                "label": {
-                    "backgroundColor": "#16A34A",
-                    "color": "#FFFFFF",
-                    "borderColor": "#4ADE80"
-                }
-            },
-
-            {
-                "name": f"Completed ({count(d,'Completed')})",
-                "label": {
-                    "backgroundColor": "#16A34A",
-                    "color": "#FFFFFF",
-                    "borderColor": "#4ADE80"
-                }
-            },
-
-            {
-                "name": f"Rejected ({count(d,'Rejected')})",
-                "label": {
-                    "backgroundColor": "#16A34A",
-                    "color": "#FFFFFF",
-                    "borderColor": "#4ADE80"
+                    "children": [
+                        {"name": f"WIP ({count(d,'WIP')})"},
+                        {"name": f"UAT ({count(d,'UAT')})"},
+                        {"name": f"Completed ({count(d,'Completed')})"}
+                    ]
                 },
 
-                "children": [
+                {
+                    "name": f"Internal ({len(d[d['category']=='Internal'])})",
+                    "label": {"backgroundColor": "#16A34A"},
 
-                    {
-                        "name": f"Technical ({reject(d,'Technical Rejection')})",
-                        "label": {
-                            "backgroundColor": "#16A34A",
-                            "color": "#FFFFFF",
-                            "borderColor": "#4ADE80"
-                        }
-                    },
+                    "children": [
+                        {"name": f"WIP ({count(d,'WIP')})"},
+                        {"name": f"UAT ({count(d,'UAT')})"},
+                        {"name": f"Completed ({count(d,'Completed')})"}
+                    ]
+                }
+            ]
+        },
 
-                    {
-                        "name": f"Business ({reject(d,'Business Rejection')})",
-                        "label": {
-                            "backgroundColor": "#16A34A",
-                            "color": "#FFFFFF",
-                            "borderColor": "#4ADE80"
-                        }
-                    }
-                ]
-            }
-        ]
+        {
+            "name": f"Rejected ({count(d,'Rejected')})",
+            "label": {
+                "backgroundColor": "#F87171"  # Light Red
+            },
+
+            "children": [
+
+                {
+                    "name": f"Technical Rejection ({reject(d,'Technical Rejection')})"
+                },
+
+                {
+                    "name": f"Business Rejection ({reject(d,'Business Rejection')})"
+                }
+            ]
+        }
+    ]
 
     customer_df = df[df["category"] == "Customer Requirement"]
     internal_df = df[df["category"] == "Internal"]
