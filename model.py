@@ -487,269 +487,575 @@ elif menu == "Approval":
             st.success("Moved to next stage")
 
 # =========================================================
+
 # DASHBOARD
+
 # =========================================================
+
 elif menu == "Dashboard":
 
+    import pandas as pd
+
+    from streamlit_echarts import st_echarts
+
     st.markdown("""
-    <h2>📊 Dashboard</h2>
+<h2>📊 Dashboard</h2>
+
     """, unsafe_allow_html=True)
 
     # =========================================================
+
     # DATA LOAD
+
     # =========================================================
+
     df = pd.DataFrame(get_all())
 
     if df.empty:
+
+        st.warning("No ideas available")
+
         st.stop()
 
     df = df.copy()
 
+    # =========================================================
+
+    # CLEANING
+
+    # =========================================================
+
     df["status"] = df["status"].fillna("New Idea")
+
     df["category"] = df["category"].fillna("")
+
+    df["rejection_reason"] = df["rejection_reason"].fillna("")
+
     df["roi"] = pd.to_numeric(df["roi"], errors="coerce").fillna(0)
 
-    customer_df = df[df["category"] == "Customer Requirement"]
-    internal_df = df[df["category"] == "Internal"]
+    # =========================================================
+
+    # KPI METRICS
 
     # =========================================================
-    # KPI METRICS
-    # =========================================================
-    c1, c2 = st.columns(2)
+
+    total_roi_customer = round(
+
+        df[df["category"] == "Customer Requirement"]["roi"].sum(),
+
+        2
+
+    )
+
+    total_roi_internal = round(
+
+        df[df["category"] == "Internal"]["roi"].sum(),
+
+        2
+
+    )
+
+    total_ideas = len(df)
+
+    total_completed = len(df[df["status"] == "Completed"])
+
+    c1, c2, c3, c4 = st.columns(4)
 
     with c1:
-        st.metric(
-            "Customer ROI",
-            round(df[df["category"] == "Customer Requirement"]["roi"].sum(), 2)
-        )
+
+        st.metric("Total Ideas", total_ideas)
 
     with c2:
-        st.metric(
-            "Internal ROI",
-            round(df[df["category"] == "Internal"]["roi"].sum(), 2)
-        )
+
+        st.metric("Completed", total_completed)
+
+    with c3:
+
+        st.metric("Customer ROI", total_roi_customer)
+
+    with c4:
+
+        st.metric("Internal ROI", total_roi_internal)
 
     st.divider()
 
     # =========================================================
-    # TREE
+
+    # TREE SECTION
+
     # =========================================================
-    st.subheader(" Ideation Tree")
+
+    st.subheader("Ideation Workflow Tree")
+
+    # =========================================================
+
+    # HELPERS
+
+    # =========================================================
 
     def count(d, status):
+
         return len(d[d["status"] == status])
 
     def reject(d, reason):
-        return len(d[
-            (d["status"] == "Rejected") &
-            (d["rejection_reason"] == reason)
-        ])
 
-    def build_tree(d):
+        return len(
 
-        return [
+            d[
 
-            {
-                "name": f"Queued ({count(d,'New Idea')})",
-                "label": {
-                    "backgroundColor": "#2563EB",
-                    "color": "#FFFFFF",
-                    "borderColor": "#60A5FA"
-                }
-            },
+                (d["status"] == "Rejected") &
 
-            {
-                "name": f"Feasibility ({count(d,'Assigned')})",
-                "label": {
-                    "backgroundColor": "#2563EB",
-                    "color": "#FFFFFF",
-                    "borderColor": "#60A5FA"
-                }
-            },
+                (d["rejection_reason"] == reason)
 
-            {
-                "name": f"WIP ({count(d,'WIP')})",
-                "label": {
-                    "backgroundColor": "#16A34A",
-                    "color": "#FFFFFF",
-                    "borderColor": "#4ADE80"
-                }
-            },
+            ]
 
-            {
-                "name": f"UAT ({count(d,'UAT')})",
-                "label": {
-                    "backgroundColor": "#16A34A",
-                    "color": "#FFFFFF",
-                    "borderColor": "#4ADE80"
-                }
-            },
+        )
 
-            {
-                "name": f"Completed ({count(d,'Completed')})",
-                "label": {
-                    "backgroundColor": "#16A34A",
-                    "color": "#FFFFFF",
-                    "borderColor": "#4ADE80"
-                }
-            },
+    # =========================================================
 
-            {
-                "name": f"Rejected ({count(d,'Rejected')})",
-                "label": {
-                    "backgroundColor": "#16A34A",
-                    "color": "#FFFFFF",
-                    "borderColor": "#4ADE80"
-                },
-                "children": [
+    # COLORS
 
-                    {
-                        "name": f"Technical ({reject(d,'Technical Rejection')})",
-                        "label": {
-                            "backgroundColor": "#16A34A",
-                            "color": "#FFFFFF",
-                            "borderColor": "#4ADE80"
-                        }
-                    },
+    # =========================================================
 
-                    {
-                        "name": f"Business ({reject(d,'Business Rejection')})",
-                        "label": {
-                            "backgroundColor": "#16A34A",
-                            "color": "#FFFFFF",
-                            "borderColor": "#4ADE80"
-                        }
-                    }
-                ]
-            }
-        ]
+    blue_node = {
 
-    customer_df = df[df["category"] == "Customer Requirement"]
-    internal_df = df[df["category"] == "Internal"]
+        "backgroundColor": "#2563EB",
+
+        "color": "#FFFFFF",
+
+        "borderColor": "#60A5FA"
+
+    }
+
+    green_node = {
+
+        "backgroundColor": "#16A34A",
+
+        "color": "#FFFFFF",
+
+        "borderColor": "#4ADE80"
+
+    }
+
+    orange_node = {
+
+        "backgroundColor": "#EA580C",
+
+        "color": "#FFFFFF",
+
+        "borderColor": "#FDBA74"
+
+    }
+
+    # =========================================================
+
+    # TREE DATA
+
+    # =========================================================
 
     tree = {
 
-        "name": f"EFS IDEATION ({len(df)})",
+        "name": f"Ideation ({len(df)})",
 
-        "label": {
-            "backgroundColor": "#EA580C",
-            "color": "#FFFFFF",
-            "borderColor": "#FDBA74"
-        },
+        "label": orange_node,
 
         "children": [
 
             {
-                "name": f"Customer ({len(customer_df)})",
 
-                "label": {
-                    "backgroundColor": "#EA580C",
-                    "color": "#FFFFFF",
-                    "borderColor": "#FDBA74"
-                },
+                "name": f"Triaged / Feasibility ({count(df,'Assigned')})",
 
-                "children": build_tree(customer_df)
-            },
+                "label": blue_node,
 
-            {
-                "name": f"Internal ({len(internal_df)})",
+                "children": [
 
-                "label": {
-                    "backgroundColor": "#EA580C",
-                    "color": "#FFFFFF",
-                    "borderColor": "#FDBA74"
-                },
+                    # =================================================
 
-                "children": build_tree(internal_df)
+                    # ACCEPTED
+
+                    # =================================================
+
+                    {
+
+                        "name": (
+
+                            f"Accepted ("
+
+                            f"{count(df,'WIP') + count(df,'UAT') + count(df,'Completed')}"
+
+                            f")"
+
+                        ),
+
+                        "label": green_node,
+
+                        "children": [
+
+                            # =========================================
+
+                            # CUSTOMER
+
+                            # =========================================
+
+                            {
+
+                                "name": (
+
+                                    f"Customer ("
+
+                                    f"{len(df[df['category']=='Customer Requirement'])}"
+
+                                    f")"
+
+                                ),
+
+                                "label": blue_node,
+
+                                "children": [
+
+                                    {
+
+                                        "name": (
+
+                                            f"WIP ("
+
+                                            f"{len(df[(df['category']=='Customer Requirement') & (df['status']=='WIP')])}"
+
+                                            f")"
+
+                                        ),
+
+                                        "label": green_node,
+
+                                        "children": [
+
+                                            {
+
+                                                "name": (
+
+                                                    f"UAT ("
+
+                                                    f"{len(df[(df['category']=='Customer Requirement') & (df['status']=='UAT')])}"
+
+                                                    f")"
+
+                                                ),
+
+                                                "label": green_node,
+
+                                                "children": [
+
+                                                    {
+
+                                                        "name": (
+
+                                                            f"Deployed ("
+
+                                                            f"{len(df[(df['category']=='Customer Requirement') & (df['status']=='Completed')])}"
+
+                                                            f")"
+
+                                                        ),
+
+                                                        "label": green_node
+
+                                                    }
+
+                                                ]
+
+                                            }
+
+                                        ]
+
+                                    }
+
+                                ]
+
+                            },
+
+                            # =========================================
+
+                            # INTERNAL
+
+                            # =========================================
+
+                            {
+
+                                "name": (
+
+                                    f"Internal ("
+
+                                    f"{len(df[df['category']=='Internal'])}"
+
+                                    f")"
+
+                                ),
+
+                                "label": blue_node,
+
+                                "children": [
+
+                                    {
+
+                                        "name": (
+
+                                            f"WIP ("
+
+                                            f"{len(df[(df['category']=='Internal') & (df['status']=='WIP')])}"
+
+                                            f")"
+
+                                        ),
+
+                                        "label": green_node,
+
+                                        "children": [
+
+                                            {
+
+                                                "name": (
+
+                                                    f"UAT ("
+
+                                                    f"{len(df[(df['category']=='Internal') & (df['status']=='UAT')])}"
+
+                                                    f")"
+
+                                                ),
+
+                                                "label": green_node,
+
+                                                "children": [
+
+                                                    {
+
+                                                        "name": (
+
+                                                            f"Deployed ("
+
+                                                            f"{len(df[(df['category']=='Internal') & (df['status']=='Completed')])}"
+
+                                                            f")"
+
+                                                        ),
+
+                                                        "label": green_node
+
+                                                    }
+
+                                                ]
+
+                                            }
+
+                                        ]
+
+                                    }
+
+                                ]
+
+                            }
+
+                        ]
+
+                    },
+
+                    # =================================================
+
+                    # REJECTED
+
+                    # =================================================
+
+                    {
+
+                        "name": f"Rejected ({count(df,'Rejected')})",
+
+                        "label": green_node,
+
+                        "children": [
+
+                            {
+
+                                "name": (
+
+                                    f"Technical ("
+
+                                    f"{reject(df,'Technical Rejection')}"
+
+                                    f")"
+
+                                ),
+
+                                "label": green_node
+
+                            },
+
+                            {
+
+                                "name": (
+
+                                    f"Business ("
+
+                                    f"{reject(df,'Business Rejection')}"
+
+                                    f")"
+
+                                ),
+
+                                "label": green_node
+
+                            }
+
+                        ]
+
+                    }
+
+                ]
+
             }
+
         ]
+
     }
+
+    # =========================================================
+
+    # ECHART OPTION
+
+    # =========================================================
 
     option = {
 
         "backgroundColor": "#0B0B0D",
 
-        "series": [{
+        "tooltip": {
 
-            "type": "tree",
+            "trigger": "item",
 
-            "data": [tree],
+            "triggerOn": "mousemove"
 
-            "symbol": "roundRect",
+        },
 
-            "orient": "LR",
+        "series": [
 
-            "expandAndCollapse": True,
+            {
 
-            "initialTreeDepth": -1,
+                "type": "tree",
 
-            "top": "5%",
-            "bottom": "5%",
-            "left": "18%",
-            "right": "20%",
+                "data": [tree],
 
-            "label": {
+                "symbol": "roundRect",
 
-                "color": "#FFFFFF",
+                "orient": "LR",
 
-                "fontSize": 11,
+                "expandAndCollapse": True,
 
-                "fontWeight": "bold",
+                "initialTreeDepth": -1,
 
-                "backgroundColor": "#1E1E24",
+                "top": "5%",
 
-                "borderColor": "#FF6A00",
+                "bottom": "5%",
 
-                "borderWidth": 2,
+                "left": "15%",
 
-                "borderRadius": 6,
+                "right": "20%",
 
-                "padding": [6, 12],
+                "lineStyle": {
 
-                "width": 170,
+                    "color": "#FF6A00",
 
-                "lineHeight": 18,
+                    "width": 2
 
-                "overflow": "break",
-
-                "distance": 40,
-
-                "formatter": "{b}"
-            },
-
-            "leaves": {
+                },
 
                 "label": {
+
+                    "color": "#FFFFFF",
+
+                    "fontSize": 11,
+
+                    "fontWeight": "bold",
+
+                    "backgroundColor": "#1E1E24",
+
+                    "borderColor": "#FF6A00",
+
+                    "borderWidth": 2,
+
+                    "borderRadius": 6,
+
+                    "padding": [6, 12],
+
                     "width": 170,
-                    "overflow": "break"
-                }
-            },
 
-            "lineStyle": {
-                "color": "#FF6A00",
-                "width": 2
-            },
+                    "lineHeight": 18,
 
-            "emphasis": {
-                "focus": "descendant",
-                "label": {
-                    "backgroundColor": "#FF6A00",
-                    "color": "#000"
+                    "overflow": "break",
+
+                    "distance": 40,
+
+                    "formatter": "{b}"
+
+                },
+
+                "leaves": {
+
+                    "label": {
+
+                        "width": 170,
+
+                        "overflow": "break"
+
+                    }
+
+                },
+
+                "emphasis": {
+
+                    "focus": "descendant",
+
+                    "label": {
+
+                        "backgroundColor": "#FF6A00",
+
+                        "color": "#000000"
+
+                    }
+
                 }
+
             }
-        }]
+
+        ]
+
     }
 
-    st_echarts(option, height="550px")
+    st_echarts(option, height="600px")
 
     st.divider()
 
     # =========================================================
+
     # KANBAN BOARD
+
     # =========================================================
+
     st.subheader("Kanban Planner Board")
 
-    statuses = ["New Idea", "Assigned", "WIP", "UAT", "Completed", "Rejected"]
+    statuses = [
+
+        "New Idea",
+
+        "Assigned",
+
+        "WIP",
+
+        "UAT",
+
+        "Completed",
+
+        "Rejected"
+
+    ]
 
     cols = st.columns(len(statuses))
 
@@ -759,45 +1065,104 @@ elif menu == "Dashboard":
 
             st.markdown(f"### {stage}")
 
-            stage_df = df[df["status"] == stage] if not df.empty else pd.DataFrame()
+            stage_df = df[df["status"] == stage]
 
             for _, row in stage_df.iterrows():
 
-                with st.expander(str(row.get("idea_name", "No Idea Name"))):
+                with st.container(border=True):
+
+                    st.markdown(
+
+                        f"#### {row.get('idea_name', 'No Idea')}"
+
+                    )
 
                     st.write(f"👤 {row.get('name','-')}")
+
                     st.write(f"📌 {row.get('project','-')}")
 
                     new_status = st.selectbox(
+
                         "Move to",
+
                         statuses,
+
                         index=statuses.index(row["status"]),
+
                         key=f"kanban_{row['id']}"
+
                     )
 
-                    if st.button("Update", key=f"btn_{row['id']}"):
+                    if st.button(
 
-                        update_idea(row["id"], {"status": new_status})
+                        "Update",
+
+                        key=f"btn_{row['id']}"
+
+                    ):
+
+                        update_idea(
+
+                            row["id"],
+
+                            {"status": new_status}
+
+                        )
+
                         st.rerun()
 
     st.divider()
 
     # =========================================================
+
     # DETAILS TABLE
+
     # =========================================================
+
     st.subheader("Details Table")
 
     table_df = df.copy()
 
-    cols = []
+    cols_to_show = []
+
     for c in table_df.columns:
-        cols.append(c)
+
+        cols_to_show.append(c)
+
         if c == "status":
+
             break
 
-    table_df = table_df[cols]
+    table_df = table_df[cols_to_show]
 
-    st.dataframe(table_df, use_container_width=True)
+    st.dataframe(
+
+        table_df,
+
+        use_container_width=True
+
+    )
+
+    # =========================================================
+
+    # DOWNLOAD BUTTON
+
+    # =========================================================
+
+    csv = table_df.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+
+        "Download CSV",
+
+        csv,
+
+        "ideation_dashboard.csv",
+
+        "text/csv"
+
+    )
+ 
 
 # =========================================================
 # ADMIN
