@@ -507,6 +507,7 @@ elif menu == "Dashboard":
 
     df["status"] = df["status"].fillna("New Idea")
     df["category"] = df["category"].fillna("")
+    df["rejection_reason"] = df["rejection_reason"].fillna("")
     df["roi"] = pd.to_numeric(df["roi"], errors="coerce").fillna(0)
 
     customer_df = df[df["category"] == "Customer Requirement"]
@@ -520,22 +521,20 @@ elif menu == "Dashboard":
     with c1:
         st.metric(
             "Customer ROI",
-            round(df[df["category"] == "Customer Requirement"]["roi"].sum(), 2)
+            round(customer_df["roi"].sum(), 2)
         )
 
     with c2:
         st.metric(
             "Internal ROI",
-            round(df[df["category"] == "Internal"]["roi"].sum(), 2)
+            round(internal_df["roi"].sum(), 2)
         )
 
     st.divider()
 
     # =========================================================
-    # TREE
+    # TREE FUNCTIONS
     # =========================================================
-    st.subheader(" Ideation Tree")
-
     def count(d, status):
         return len(d[d["status"] == status])
 
@@ -550,137 +549,95 @@ elif menu == "Dashboard":
         return [
 
             {
-                "name": f"Queued ({count(d,'New Idea')})",
+                "name": f"Queued / Feasibility ({count(d,'New Idea') + count(d,'Assigned')})",
                 "label": {
-                    "backgroundColor": "#2563EB",
+                    "backgroundColor": "#3B82F6",  # Blue
                     "color": "#FFFFFF",
                     "borderColor": "#60A5FA"
                 }
             },
 
             {
-                "name": f"Feasibility ({count(d,'Assigned')})",
+                "name": "Accepted",
                 "label": {
-                    "backgroundColor": "#2563EB",
-                    "color": "#FFFFFF",
-                    "borderColor": "#60A5FA"
-                }
-            },
-
-            {
-                "name": f"WIP ({count(d,'WIP')})",
-                "label": {
-                    "backgroundColor": "#16A34A",
-                    "color": "#FFFFFF",
-                    "borderColor": "#4ADE80"
-                }
-            },
-
-            {
-                "name": f"UAT ({count(d,'UAT')})",
-                "label": {
-                    "backgroundColor": "#16A34A",
-                    "color": "#FFFFFF",
-                    "borderColor": "#4ADE80"
-                }
-            },
-
-            {
-                "name": f"Completed ({count(d,'Completed')})",
-                "label": {
-                    "backgroundColor": "#16A34A",
-                    "color": "#FFFFFF",
-                    "borderColor": "#4ADE80"
-                }
-            },
-
-            {
-                "name": f"Rejected ({count(d,'Rejected')})",
-                "label": {
-                    "backgroundColor": "#16A34A",
-                    "color": "#FFFFFF",
-                    "borderColor": "#4ADE80"
+                    "backgroundColor": "#22C55E",  # Green
+                    "color": "#FFFFFF"
                 },
                 "children": [
 
                     {
-                        "name": f"Technical ({reject(d,'Technical Rejection')})",
+                        "name": "Customer Requirement",
                         "label": {
-                            "backgroundColor": "#16A34A",
-                            "color": "#FFFFFF",
-                            "borderColor": "#4ADE80"
-                        }
+                            "backgroundColor": "#22C55E",
+                            "color": "#FFFFFF"
+                        },
+                        "children": [
+                            {"name": f"WIP ({count(d,'WIP')})"},
+                            {"name": f"UAT ({count(d,'UAT')})"},
+                            {"name": f"Completed ({count(d,'Completed')})"}
+                        ]
                     },
 
                     {
-                        "name": f"Business ({reject(d,'Business Rejection')})",
+                        "name": "Internal",
                         "label": {
-                            "backgroundColor": "#16A34A",
-                            "color": "#FFFFFF",
-                            "borderColor": "#4ADE80"
-                        }
+                            "backgroundColor": "#22C55E",
+                            "color": "#FFFFFF"
+                        },
+                        "children": [
+                            {"name": f"WIP ({count(d,'WIP')})"},
+                            {"name": f"UAT ({count(d,'UAT')})"},
+                            {"name": f"Completed ({count(d,'Completed')})"}
+                        ]
+                    }
+                ]
+            },
+
+            {
+                "name": "Rejected",
+                "label": {
+                    "backgroundColor": "#FB7185",  # Light Red
+                    "color": "#FFFFFF"
+                },
+                "children": [
+
+                    {
+                        "name": f"Technical Rejection ({reject(d,'Technical Rejection')})",
+                        "label": {"backgroundColor": "#FB7185"}
+                    },
+
+                    {
+                        "name": f"Business Rejection ({reject(d,'Business Rejection')})",
+                        "label": {"backgroundColor": "#FB7185"}
                     }
                 ]
             }
         ]
 
-    customer_df = df[df["category"] == "Customer Requirement"]
-    internal_df = df[df["category"] == "Internal"]
-
+    # =========================================================
+    # TREE BUILD
+    # =========================================================
     tree = {
-
         "name": f"EFS IDEATION ({len(df)})",
-
         "label": {
             "backgroundColor": "#EA580C",
             "color": "#FFFFFF",
             "borderColor": "#FDBA74"
         },
-
-        "children": [
-
-            {
-                "name": f"Customer ({len(customer_df)})",
-
-                "label": {
-                    "backgroundColor": "#EA580C",
-                    "color": "#FFFFFF",
-                    "borderColor": "#FDBA74"
-                },
-
-                "children": build_tree(customer_df)
-            },
-
-            {
-                "name": f"Internal ({len(internal_df)})",
-
-                "label": {
-                    "backgroundColor": "#EA580C",
-                    "color": "#FFFFFF",
-                    "borderColor": "#FDBA74"
-                },
-
-                "children": build_tree(internal_df)
-            }
-        ]
+        "children": build_tree(df)
     }
 
+    # =========================================================
+    # ECHART OPTION
+    # =========================================================
     option = {
-
         "backgroundColor": "#0B0B0D",
-
         "series": [{
-
             "type": "tree",
-
             "data": [tree],
-
             "symbol": "roundRect",
-
             "orient": "LR",
-
             "expandAndCollapse": True,
-
             "initialTreeDepth": -1,
 
             "top": "5%",
@@ -689,36 +646,22 @@ elif menu == "Dashboard":
             "right": "20%",
 
             "label": {
-
                 "color": "#FFFFFF",
-
                 "fontSize": 11,
-
                 "fontWeight": "bold",
-
                 "backgroundColor": "#1E1E24",
-
                 "borderColor": "#FF6A00",
-
                 "borderWidth": 2,
-
                 "borderRadius": 6,
-
                 "padding": [6, 12],
-
                 "width": 170,
-
                 "lineHeight": 18,
-
                 "overflow": "break",
-
                 "distance": 40,
-
                 "formatter": "{b}"
             },
 
             "leaves": {
-
                 "label": {
                     "width": 170,
                     "overflow": "break"
@@ -759,7 +702,7 @@ elif menu == "Dashboard":
 
             st.markdown(f"### {stage}")
 
-            stage_df = df[df["status"] == stage] if not df.empty else pd.DataFrame()
+            stage_df = df[df["status"] == stage]
 
             for _, row in stage_df.iterrows():
 
