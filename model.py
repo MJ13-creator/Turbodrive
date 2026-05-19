@@ -598,7 +598,7 @@ elif menu == "Dashboard":
                                    f"{len(df[df['category']=='Customer Requirement'])}"
                                    f")"
                                ),
-                               "label": blue_node,
+                               "label": green_node,
                                "children": [
                                    {
                                        "name": (
@@ -635,7 +635,7 @@ elif menu == "Dashboard":
                                    f"{len(df[df['category']=='Internal'])}"
                                    f")"
                                ),
-                               "label": blue_node,
+                               "label": green_node,
                                "children": [
                                    {
                                        "name": (
@@ -755,7 +755,7 @@ elif menu == "Dashboard":
    st_echarts(
        option,
        height="750px",
-       width="100%"
+       width="109%"
    )
    st.divider()
     # =========================================================
