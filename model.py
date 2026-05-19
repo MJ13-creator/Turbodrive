@@ -761,13 +761,11 @@ elif menu == "Dashboard":
     # =========================================================
     # KANBAN BOARD
     # =========================================================
-    st.subheader("Kanban Planner Board")
+   st.subheader("Kanban Planner Board")
 
-    statuses = ["New Idea", "Assigned", "WIP", "UAT", "Completed", "Rejected"]
-
-    cols = st.columns(len(statuses))
-
-    for i, stage in enumerate(statuses):
+   statuses = ["New Idea", "Assigned", "WIP", "UAT", "Completed", "Rejected"]
+   cols = st.columns(len(statuses))
+   for i, stage in enumerate(statuses):
 
         with cols[i]:
 
@@ -793,8 +791,7 @@ elif menu == "Dashboard":
 
                         update_idea(row["id"], {"status": new_status})
                         st.rerun()
-
-    st.divider()
+                        st.divider()
    # =========================================================
    # DETAILS TABLE
    # =========================================================
