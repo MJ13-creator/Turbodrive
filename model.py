@@ -729,8 +729,8 @@ elif menu == "Dashboard":
                    "borderColor": "#FF6A00",
                    "borderWidth": 2,
                    "borderRadius": 6,
-                   "padding": [6, 12],
-                   "width": 170,
+                   "padding": [7, 12],
+                   "width": 190,
                    "lineHeight": 18,
                    "overflow": "break",
                    "distance": 60,
@@ -738,7 +738,7 @@ elif menu == "Dashboard":
                },
                "leaves": {
                    "label": {
-                       "width": 170,
+                       "width": 180,
                        "overflow": "break"
                    }
                },
