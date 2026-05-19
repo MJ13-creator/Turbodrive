@@ -549,52 +549,23 @@ elif menu == "Dashboard":
         return [
 
             {
-                "name": f"Queued / Feasibility ({count(d,'New Idea') + count(d,'Assigned')})",
+                "name": f"Queued / Feasibility Study ({count(d,'New Idea') + count(d,'Assigned')})",
                 "label": {
                     "backgroundColor": "#3B82F6",  # Blue
-                    "color": "#FFFFFF",
-                    "borderColor": "#60A5FA"
+                    "color": "#FFFFFF"
                 }
             },
 
             {
-                "name": "Accepted",
+                "name": f"Accepted ({count(d,'WIP') + count(d,'UAT') + count(d,'Completed')})",
                 "label": {
                     "backgroundColor": "#22C55E",  # Green
                     "color": "#FFFFFF"
-                },
-                "children": [
-
-                    {
-                        "name": "Customer Requirement",
-                        "label": {
-                            "backgroundColor": "#22C55E",
-                            "color": "#FFFFFF"
-                        },
-                        "children": [
-                            {"name": f"WIP ({count(d,'WIP')})"},
-                            {"name": f"UAT ({count(d,'UAT')})"},
-                            {"name": f"Completed ({count(d,'Completed')})"}
-                        ]
-                    },
-
-                    {
-                        "name": "Internal",
-                        "label": {
-                            "backgroundColor": "#22C55E",
-                            "color": "#FFFFFF"
-                        },
-                        "children": [
-                            {"name": f"WIP ({count(d,'WIP')})"},
-                            {"name": f"UAT ({count(d,'UAT')})"},
-                            {"name": f"Completed ({count(d,'Completed')})"}
-                        ]
-                    }
-                ]
+                }
             },
 
             {
-                "name": "Rejected",
+                "name": f"Rejected ({count(d,'Rejected')})",
                 "label": {
                     "backgroundColor": "#FB7185",  # Light Red
                     "color": "#FFFFFF"
@@ -602,13 +573,19 @@ elif menu == "Dashboard":
                 "children": [
 
                     {
-                        "name": f"Technical Rejection ({reject(d,'Technical Rejection')})",
-                        "label": {"backgroundColor": "#FB7185"}
+                        "name": f"Technical ({reject(d,'Technical Rejection')})",
+                        "label": {
+                            "backgroundColor": "#FB7185",
+                            "color": "#FFFFFF"
+                        }
                     },
 
                     {
-                        "name": f"Business Rejection ({reject(d,'Business Rejection')})",
-                        "label": {"backgroundColor": "#FB7185"}
+                        "name": f"Business ({reject(d,'Business Rejection')})",
+                        "label": {
+                            "backgroundColor": "#FB7185",
+                            "color": "#FFFFFF"
+                        }
                     }
                 ]
             }
