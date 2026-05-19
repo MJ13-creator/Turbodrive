@@ -70,22 +70,16 @@ def clean_df(df):
 # =========================================================
 permission_data = load_permissions()
 
+for user in permission_data:
+    user["email"] = str(user["email"]).strip().lower()
+    user["role"] = str(user["role"]).strip().lower()
+
 user_df = pd.DataFrame(permission_data)
 
 if not user_df.empty:
-
-    user_df.columns = [clean(c) for c in user_df.columns]
-
-    user_df["email"] = user_df["email"].apply(clean)
-    user_df["role"] = user_df["role"].apply(clean)
-
+    email_role_map = dict(zip(user_df["email"], user_df["role"]))
 else:
-
-    user_df = pd.DataFrame(columns=["email", "role"])
-
-email_role_map = dict(
-    zip(user_df["email"], user_df["role"])
-)
+    email_role_map = {}
 
 # =========================================================
 # ROLE ACCESS
