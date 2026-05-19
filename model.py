@@ -178,12 +178,12 @@ if menu == "Submit Idea":
     st.subheader("Submit Idea")
 
     pl_users = [
-    u["email"]
-    for u in permission_data
-    if u.get("role") in ["pl/spl", "automation pl"]
-]
+        u["email"]
+        for u in permission_data
+        if u.get("role") in ["pl/spl", "automation pl"]
+    ]
 
-pl_users = sorted(list(set(pl_users)))
+    pl_users = sorted(list(set(pl_users)))
 
     with st.form("submit_form"):
 
@@ -219,40 +219,6 @@ pl_users = sorted(list(set(pl_users)))
         )
 
         submit = st.form_submit_button("Submit")
-
-    if submit:
-
-        add_idea({
-
-            "id": str(uuid.uuid4()),
-
-            "name": name,
-            "idea_name": idea_name,
-            "idea": idea,
-
-            "project": project,
-            "category": category,
-            "pl_name": pl_name,
-
-            "status": "New Idea",
-
-            "roi": 0,
-
-            "assigned_engineer": "",
-
-            "feasibility_data": {},
-            "feasibility_comments": "",
-
-            "decision": "",
-            "rejection_reason": "",
-            "approval_comment": "",
-
-            "created_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "assigned_date": "",
-            "wip_date": "",
-            "uat_date": "",
-            "completion_date": ""
-        })
 
         st.success("Idea Submitted")
 
