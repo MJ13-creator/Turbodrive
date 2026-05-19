@@ -1,133 +1,51 @@
-import requests
-import json
 import streamlit as st
-import base64
-
-TOKEN = st.secrets["GITHUB_TOKEN"]
-REPO = st.secrets["GITHUB_REPO"]
-
-HEADERS = {
-    "Authorization": f"token {TOKEN}",
-    "Accept": "application/vnd.github.v3+json"
-}
-
-# =====================================================
-# LOAD JSON FROM GITHUB
-# =====================================================
-def load_json(filename):
-
-    url = f"https://api.github.com/repos/{REPO}/contents/{filename}"
-
-    response = requests.get(url, headers=HEADERS)
-
-    if response.status_code == 200:
-
-        content = response.json()["content"]
-
-        decoded = base64.b64decode(content).decode("utf-8")
-
-        return json.loads(decoded)
-
-    return []
-
-# =====================================================
-# SAVE JSON TO GITHUB
-# =====================================================
-def save_json(filename, data):
-
-    url = f"https://api.github.com/repos/{REPO}/contents/{filename}"
-
-    response = requests.get(url, headers=HEADERS)
-
-    sha = None
-
-    if response.status_code == 200:
-        sha = response.json().get("sha")
-
-    content = json.dumps(data, indent=4)
-
-    encoded = base64.b64encode(content.encode("utf-8")).decode("utf-8")
-
-    payload = {
-        "message": f"update {filename}",
-        "content": encoded
-    }
-
-    if sha:
-        payload["sha"] = sha
-
-    put_response = requests.put(url, headers=HEADERS, json=payload)
-
-    # 🔥 IMPORTANT DEBUG
-    if put_response.status_code not in [200, 201]:
-        st.error("GitHub Save Failed")
-        st.write(put_response.status_code)
-        st.write(put_response.text)
+from supabase_client import supabase
 
 # =====================================================
 # IDEAS
 # =====================================================
-def get_all():
 
-    return load_json("ideas.json")
+def get_all():
+    response = supabase.table("ideas").select("*").execute()
+    return response.data or []
+
 
 def add_idea(idea):
+    supabase.table("ideas").insert(idea).execute()
 
-    data = get_all()
-
-    data.append(idea)
-
-    save_json("ideas.json", data)
 
 def update_idea(idea_id, updated_fields):
+    supabase.table("ideas") \
+        .update(updated_fields) \
+        .eq("id", idea_id) \
+        .execute()
 
-    data = get_all()
-
-    for item in data:
-
-        if item["id"] == idea_id:
-
-            item.update(updated_fields)
-
-    save_json("ideas.json", data)
 
 # =====================================================
-# USERS
+# USERS / PERMISSIONS
 # =====================================================
+
 def load_permissions():
+    response = supabase.table("users").select("*").execute()
+    return response.data or []
 
-    return load_json("permissions.json")
 
 def add_user(email, role):
-
-    users = load_permissions()
-
-    users.append({
+    supabase.table("users").insert({
         "email": email,
         "role": role
-    })
+    }).execute()
 
-    save_json("permissions.json", users)
 
 def update_role(email, new_role):
+    supabase.table("users") \
+        .update({"role": new_role}) \
+        .eq("email", email) \
+        .execute()
 
-    users = load_permissions()
-
-    for user in users:
-
-        if user["email"] == email:
-
-            user["role"] = new_role
-
-    save_json("permissions.json", users)
 
 def delete_user(email):
-
-    users = load_permissions()
-
-    users = [
-        u for u in users
-        if u["email"] != email
-    ]
-
-    save_json("permissions.json", users)
+    supabase.table("users") \
+        .delete() \
+        .eq("email", email) \
+        .execute()
