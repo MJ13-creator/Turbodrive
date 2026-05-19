@@ -3,8 +3,8 @@ import json
 import streamlit as st
 import base64
 
-TOKEN = st.secrets["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"]
-REPO = st.secrets["MJ13-creator/efs-turbo-data"]
+TOKEN = st.secrets["GITHUB_TOKEN"]
+REPO = st.secrets["GITHUB_REPO"]
 
 HEADERS = {
     "Authorization": f"token {TOKEN}",
