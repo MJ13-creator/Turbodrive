@@ -652,7 +652,7 @@ elif menu == "Dashboard":
             (d["rejection_reason"] == reason)
         ])
 
-def build_tree(d):
+    def build_tree(d):
 
     return [
 
