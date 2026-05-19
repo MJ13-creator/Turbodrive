@@ -4,3 +4,4 @@ openpyxl
 streamlit-echarts
 requests
 openpyxl
+supabase
