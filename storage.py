@@ -1,190 +1,125 @@
-# =========================================================
-# STORAGE.PY
-# COMPLETE UPDATED COPY-PASTE VERSION
-# =========================================================
-
+import requests
 import json
-import os
-import re
+import streamlit as st
+import base64
 
-# =========================================================
-# CLEAN FUNCTION
-# =========================================================
-def clean(x):
+TOKEN = st.secrets["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"]
+REPO = st.secrets["MJ13-creator/efs-turbo-data"]
 
-    if x is None:
-        return ""
+HEADERS = {
+    "Authorization": f"token {TOKEN}",
+    "Accept": "application/vnd.github.v3+json"
+}
 
-    x = str(x).replace("\u00a0", "")
-    x = x.strip().lower()
-    x = re.sub(r"\s+", " ", x)
+# =====================================================
+# LOAD JSON FROM GITHUB
+# =====================================================
+def load_json(filename):
 
-    return x
+    url = f"https://api.github.com/repos/{REPO}/contents/{filename}"
 
+    response = requests.get(url, headers=HEADERS)
 
-# =========================================================
-# IDEA STORAGE
-# =========================================================
-IDEA_FILE = "ideas.json"
+    if response.status_code == 200:
 
+        content = response.json()["content"]
 
-def load_data():
+        decoded = base64.b64decode(content).decode("utf-8")
 
-    if not os.path.exists(IDEA_FILE):
+        return json.loads(decoded)
 
-        with open(IDEA_FILE, "w") as f:
-            json.dump([], f)
+    return []
 
-    with open(IDEA_FILE, "r") as f:
+# =====================================================
+# SAVE JSON TO GITHUB
+# =====================================================
+def save_json(filename, data):
 
-        return json.load(f)
+    url = f"https://api.github.com/repos/{REPO}/contents/{filename}"
 
+    # Get SHA
+    response = requests.get(url, headers=HEADERS)
 
-def save_data(data):
+    sha = response.json()["sha"]
 
-    with open(IDEA_FILE, "w") as f:
+    content = json.dumps(data, indent=4)
 
-        json.dump(data, f, indent=4)
+    encoded = base64.b64encode(
+        content.encode("utf-8")
+    ).decode("utf-8")
 
+    payload = {
+        "message": f"update {filename}",
+        "content": encoded,
+        "sha": sha
+    }
 
-def add_idea(item):
+    requests.put(url, headers=HEADERS, json=payload)
 
-    data = load_data()
-
-    data.append(item)
-
-    save_data(data)
-
-
+# =====================================================
+# IDEAS
+# =====================================================
 def get_all():
 
-    return load_data()
+    return load_json("ideas.json")
 
+def add_idea(idea):
 
-def update_idea(idea_id, updates):
+    data = get_all()
 
-    data = load_data()
+    data.append(idea)
+
+    save_json("ideas.json", data)
+
+def update_idea(idea_id, updated_fields):
+
+    data = get_all()
 
     for item in data:
 
         if item["id"] == idea_id:
 
-            item.update(updates)
+            item.update(updated_fields)
 
-    save_data(data)
+    save_json("ideas.json", data)
 
-
-# =========================================================
-# PERMISSION STORAGE
-# =========================================================
-PERMISSION_FILE = "permissions.json"
-
-
+# =====================================================
+# USERS
+# =====================================================
 def load_permissions():
 
-    if not os.path.exists(PERMISSION_FILE):
+    return load_json("permissions.json")
 
-        default_users = [
-
-            {
-                "email": "ravi.manoharan@alten-india.com",
-                "role": "super user"
-            }
-
-        ]
-
-        with open(PERMISSION_FILE, "w") as f:
-
-            json.dump(default_users, f, indent=4)
-
-    with open(PERMISSION_FILE, "r") as f:
-
-        data = json.load(f)
-
-    # =====================================================
-    # CLEAN ALL USERS
-    # =====================================================
-    cleaned_data = []
-
-    for user in data:
-
-        cleaned_data.append({
-
-            "email": clean(user.get("email", "")),
-            "role": clean(user.get("role", ""))
-
-        })
-
-    return cleaned_data
-
-
-def save_permissions(data):
-
-    with open(PERMISSION_FILE, "w") as f:
-
-        json.dump(data, f, indent=4)
-
-
-# =========================================================
-# ADD USER
-# =========================================================
 def add_user(email, role):
 
-    data = load_permissions()
+    users = load_permissions()
 
-    email = clean(email)
-    role = clean(role)
+    users.append({
+        "email": email,
+        "role": role
+    })
 
-    exists = False
+    save_json("permissions.json", users)
 
-    for x in data:
+def update_role(email, new_role):
 
-        if clean(x["email"]) == email:
-            exists = True
+    users = load_permissions()
 
-    if not exists:
+    for user in users:
 
-        data.append({
+        if user["email"] == email:
 
-            "email": email,
-            "role": role
-        })
+            user["role"] = new_role
 
-        save_permissions(data)
+    save_json("permissions.json", users)
 
-
-# =========================================================
-# DELETE USER
-# =========================================================
 def delete_user(email):
 
-    data = load_permissions()
+    users = load_permissions()
 
-    email = clean(email)
-
-    data = [
-
-        x for x in data
-        if clean(x["email"]) != email
+    users = [
+        u for u in users
+        if u["email"] != email
     ]
 
-    save_permissions(data)
-
-
-# =========================================================
-# UPDATE ROLE
-# =========================================================
-def update_role(email, role):
-
-    data = load_permissions()
-
-    email = clean(email)
-    role = clean(role)
-
-    for x in data:
-
-        if clean(x["email"]) == email:
-
-            x["role"] = role
-
-    save_permissions(data)
+    save_json("permissions.json", users)
