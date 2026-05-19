@@ -590,20 +590,51 @@ elif menu == "Dashboard":
     # =========================================================
     # DATA LOAD
     # =========================================================
-    data = get_all()
-    df = pd.DataFrame(data)
+    df = pd.DataFrame(get_all())
 
     if df.empty:
-        st.stop()
+       st.stop()
 
-    df = df.copy()
+df = df.copy()
 
-    df["status"] = df["status"].fillna("New Idea")
-    df["category"] = df["category"].fillna("")
-    df["idea"] = df["idea"].fillna("No Idea")
-    df["idea_name"] = df["idea_name"].fillna("No Idea Name")
-    df["rejection_reason"] = df["rejection_reason"].fillna("")
-    df["roi"] = pd.to_numeric(df["roi"], errors="coerce").fillna(0)
+# CLEANING
+df["status"] = df["status"].fillna("New Idea")
+df["category"] = df["category"].fillna("")
+df["roi"] = pd.to_numeric(df["roi"], errors="coerce").fillna(0)
+
+# ✅ MUST BE BEFORE TREE
+customer_df = df[df["category"] == "Customer Requirement"]
+internal_df = df[df["category"] == "Internal"]
+
+def count(d, status):
+    return len(d[d["status"] == status])
+
+def reject(d, reason):
+    return len(d[(d["status"] == "Rejected") & (d["rejection_reason"] == reason)])
+
+def build_tree(d):
+    return [
+        {
+            "name": f"Queued ({count(d,'New Idea')})"
+        },
+        {
+            "name": f"Feasibility ({count(d,'Assigned')})"
+        }
+    ]
+
+tree = {
+    "name": f"EFS IDEATION ({len(df)})",
+    "children": [
+        {
+            "name": f"Customer ({len(customer_df)})",
+            "children": build_tree(customer_df)
+        },
+        {
+            "name": f"Internal ({len(internal_df)})",
+            "children": build_tree(internal_df)
+        }
+    ]
+}
 
     # =========================================================
     # KPI METRICS
