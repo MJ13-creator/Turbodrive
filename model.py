@@ -532,9 +532,9 @@ elif menu == "Dashboard":
     st.divider()
 
     # =========================================================
-# TREE
-# =========================================================
-st.subheader(" Ideation Tree")
+    # TREE
+    # =========================================================
+    st.subheader(" Ideation Tree")
 
 def count(d, status):
     return len(d[d["status"] == status])
