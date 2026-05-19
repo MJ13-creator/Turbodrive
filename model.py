@@ -135,6 +135,17 @@ st.markdown(
 # =========================================================
 # LOGIN
 # =========================================================
+def get_user_role(email, role_map):
+
+    email = email.strip().lower()
+
+    # ADMIN OVERRIDE
+    if email in SUPER_USERS:
+        return "super user"
+
+    return role_map.get(email)
+
+
 st.sidebar.title("Login")
 
 email_input = st.sidebar.text_input("Enter Email ID")
