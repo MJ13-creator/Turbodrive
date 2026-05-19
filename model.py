@@ -135,6 +135,10 @@ st.markdown(
 # =========================================================
 # LOGIN
 # =========================================================
+SUPER_USERS = {
+    "ravi.manoharan@alten-india.com"
+}
+
 def get_user_role(email, role_map):
 
     email = email.strip().lower()
