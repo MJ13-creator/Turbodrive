@@ -173,80 +173,48 @@ menu = st.sidebar.selectbox(
 # =========================================================
 # SUBMIT IDEA
 # =========================================================
-if menu == "Submit Idea":
+with st.form("submit_form"):
 
-    st.subheader("Submit Idea")
+    name = st.text_input("Idea submitter name")
+    idea_name = st.text_input("Idea Name")
+    idea = st.text_area("Idea")
 
-    pl_users = [
-        u["email"]
-        for u in permission_data
-        if u.get("role") in ["pl/spl", "automation pl"]
-    ]
+    project = st.selectbox(
+        "Project",
+        ["CA-MRO","BA-MRO","BA-LCE","CA-LCE","Controls","Technical Response"]
+    )
 
-    pl_users = sorted(list(set(pl_users)))
+    category = st.selectbox(
+        "Type",
+        ["Customer Requirement","Internal"]
+    )
 
-    with st.form("submit_form"):
+    pl_name = st.selectbox(
+        "PL / SPL Name",
+        pl_users
+    )
 
-        name = st.text_input("Idea submitter name")
+    submit = st.form_submit_button("Submit")
 
-        idea_name = st.text_input("Idea Name")
-
-        idea = st.text_area("Idea")
-
-        project = st.selectbox(
-            "Project",
-            [
-                "CA-MRO",
-                "BA-MRO",
-                "BA-LCE",
-                "CA-LCE",
-                "Controls",
-                "Technical Response"
-            ]
-        )
-
-        category = st.selectbox(
-            "Type",
-            [
-                "Customer Requirement",
-                "Internal"
-            ]
-        )
-
-        pl_name = st.selectbox(
-            "PL / SPL Name",
-            pl_users
-        )
-
-        submit = st.form_submit_button("Submit")
-
+# 👇 THIS MUST BE OUTSIDE BUT STILL AFTER FORM
 if submit:
 
     add_idea({
-
         "id": str(uuid.uuid4()),
-
         "name": name,
         "idea_name": idea_name,
         "idea": idea,
-
         "project": project,
         "category": category,
         "pl_name": pl_name,
-
         "status": "New Idea",
-
         "roi": 0,
-
         "assigned_engineer": "",
-
         "feasibility_data": {},
         "feasibility_comments": "",
-
         "decision": "",
         "rejection_reason": "",
         "approval_comment": "",
-
         "created_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "assigned_date": "",
         "wip_date": "",
@@ -255,7 +223,6 @@ if submit:
     })
 
     st.success("Idea Submitted Successfully ✅")
-
     st.rerun()
 
 # =========================================================
