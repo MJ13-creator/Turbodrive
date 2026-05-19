@@ -638,7 +638,7 @@ elif menu == "Dashboard":
             (d["rejection_reason"] == reason)
         ])
 
-    def build_ideation_tree():
+    def build_tree():
 
           return {
               "name": "Ideation",
