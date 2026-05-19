@@ -3,8 +3,8 @@ import json
 import streamlit as st
 import base64
 
-TOKEN = st.secrets[GITHUB_TOKEN]
-REPO = st.secrets[GITHUB_REPO]
+TOKEN = st.secrets["GITHUB_TOKEN"]
+REPO = st.secrets["GITHUB_REPO"]
 
 HEADERS = {
     "Authorization": f"token {TOKEN}",
