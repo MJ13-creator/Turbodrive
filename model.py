@@ -220,7 +220,43 @@ if menu == "Submit Idea":
 
         submit = st.form_submit_button("Submit")
 
-        #st.success("Idea Submitted")
+if submit:
+
+    add_idea({
+
+        "id": str(uuid.uuid4()),
+
+        "name": name,
+        "idea_name": idea_name,
+        "idea": idea,
+
+        "project": project,
+        "category": category,
+        "pl_name": pl_name,
+
+        "status": "New Idea",
+
+        "roi": 0,
+
+        "assigned_engineer": "",
+
+        "feasibility_data": {},
+        "feasibility_comments": "",
+
+        "decision": "",
+        "rejection_reason": "",
+        "approval_comment": "",
+
+        "created_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "assigned_date": "",
+        "wip_date": "",
+        "uat_date": "",
+        "completion_date": ""
+    })
+
+    st.success("Idea Submitted Successfully ✅")
+
+    st.rerun()
 
 # =========================================================
 # PL ASSIGNMENT
