@@ -220,7 +220,7 @@ if menu == "Submit Idea":
 
         submit = st.form_submit_button("Submit")
 
-        st.success("Idea Submitted")
+        #st.success("Idea Submitted")
 
 # =========================================================
 # PL ASSIGNMENT
