@@ -70,23 +70,20 @@ def clean_df(df):
 # =========================================================
 permission_data = load_permissions()
 
+# normalize safely
+permission_data = permission_data or []
+
+for u in permission_data:
+    u["email"] = clean(u.get("email", ""))
+    u["role"] = clean(u.get("role", ""))
+
 user_df = pd.DataFrame(permission_data)
 
-if not user_df.empty:
-
-    user_df.columns = [clean(c) for c in user_df.columns]
-
-    user_df["email"] = user_df["email"].apply(clean)
-    user_df["role"] = user_df["role"].apply(clean)
-
-else:
-
-    user_df = pd.DataFrame(columns=["email", "role"])
-
-email_role_map = dict(
-    zip(user_df["email"], user_df["role"])
-)
-
+email_role_map = {
+    u["email"]: u["role"]
+    for u in permission_data
+    if u.get("email") and u.get("role")
+}
 # =========================================================
 # ROLE ACCESS
 # =========================================================
@@ -143,7 +140,7 @@ email_input = st.sidebar.text_input("Enter Email ID")
 
 user_email = clean(email_input)
 
-role = email_role_map.get(user_email)
+role = email_role_map.get(clean(user_email))
 
 # =========================================================
 # AUTH
@@ -156,7 +153,11 @@ if role is None:
     st.error("🚫 Access Denied")
     st.stop()
 
-st.sidebar.success(f"Role: {role.title()}")
+if role:
+    st.sidebar.success(f"Role: {role.title()}")
+else:
+    st.error("Role not found in system")
+    st.stop()
 
 allowed_pages = role_page_map.get(role, [])
 
@@ -176,14 +177,13 @@ if menu == "Submit Idea":
 
     st.subheader("Submit Idea")
 
-    pl_users = user_df[
-        user_df["role"].isin([
-            "pl/spl",
-            "automation pl"
-        ])
-    ]["email"].dropna().unique().tolist()
+    pl_users = [
+    u["email"]
+    for u in permission_data
+    if u.get("role") in ["pl/spl", "automation pl"]
+]
 
-    pl_users = sorted(pl_users)
+pl_users = sorted(list(set(pl_users)))
 
     with st.form("submit_form"):
 
@@ -265,14 +265,15 @@ elif menu == "PL Assignment":
 
     df = clean_df(pd.DataFrame(get_all()))
 
-    # =========================================================
-    # AUTOMATION ENGINEERS FROM ADMIN
-    # =========================================================
-    engineer_users = user_df[
-        user_df["role"] == "automation engineer"
-    ]["email"].dropna().unique().tolist()
-
-    engineer_users = sorted(engineer_users)
+# =========================================================
+# AUTOMATION ENGINEERS FROM ADMIN
+# =========================================================
+engineer_users = [
+    u["email"]
+    for u in permission_data
+    if u.get("role") == "automation engineer"
+]
+engineer_users = sorted(engineer_users)
 
     for item in df.to_dict("records"):
 
