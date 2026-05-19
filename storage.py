@@ -37,10 +37,12 @@ def save_json(filename, data):
 
     url = f"https://api.github.com/repos/{REPO}/contents/{filename}"
 
-    # Get SHA
     response = requests.get(url, headers=HEADERS)
 
-    sha = response.json()["sha"]
+    sha = None
+
+    if response.status_code == 200:
+        sha = response.json().get("sha")
 
     content = json.dumps(data, indent=4)
 
@@ -50,11 +52,17 @@ def save_json(filename, data):
 
     payload = {
         "message": f"update {filename}",
-        "content": encoded,
-        "sha": sha
+        "content": encoded
     }
 
-    requests.put(url, headers=HEADERS, json=payload)
+    if sha:
+        payload["sha"] = sha
+
+    put_response = requests.put(url, headers=HEADERS, json=payload)
+
+    # DEBUG (optional but helpful)
+    if put_response.status_code not in [200, 201]:
+        st.error(put_response.json())
 
 # =====================================================
 # IDEAS
