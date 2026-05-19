@@ -957,7 +957,7 @@ elif menu == "Dashboard":
 
                 "left": "15%",
 
-                "right": "20%",
+                "right": "30%",
 
                 "lineStyle": {
 
