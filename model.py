@@ -745,7 +745,6 @@ st.divider()
     # KANBAN BOARD
     # =========================================================
 st.subheader("Kanban Planner Board")
-
     statuses = ["New Idea", "Assigned", "WIP", "UAT", "Completed", "Rejected"]
 
     cols = st.columns(len(statuses))
@@ -782,9 +781,8 @@ st.subheader("Kanban Planner Board")
     # =========================================================
     # DETAILS TABLE
     # =========================================================
-    st.subheader("Details Table")
-
-    table_df = df.copy()
+st.subheader("Details Table")
+   table_df = df.copy()
 
     cols = []
     for c in table_df.columns:
