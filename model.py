@@ -700,8 +700,8 @@ elif menu == "Dashboard":
         ]
     }
 
-    customer_df = df[df["category"] == "Customer Requirement"]
-    internal_df = df[df["category"] == "Internal"]
+    #customer_df = df[df["category"] == "Customer Requirement"]
+    #internal_df = df[df["category"] == "Internal"]
 
     tree = {
 
