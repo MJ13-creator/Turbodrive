@@ -532,105 +532,214 @@ elif menu == "Dashboard":
     st.divider()
 
     # =========================================================
-    # IDEATION TREE
-    # =========================================================
-    st.subheader("Ideation Tree")
+# TREE
+# =========================================================
+st.subheader(" Ideation Tree")
 
-    def build_tree(d):
+def count(d, status):
+    return len(d[d["status"] == status])
 
-        return {
-            "name": "Ideation",
+def reject(d, reason):
+    return len(d[
+        (d["status"] == "Rejected") &
+        (d["rejection_reason"] == reason)
+    ])
+
+def build_tree(d):
+
+    return [
+
+        {
+            "name": f"Queued ({count(d,'New Idea')})",
+            "label": {
+                "backgroundColor": "#2563EB",
+                "color": "#FFFFFF",
+                "borderColor": "#60A5FA"
+            }
+        },
+
+        {
+            "name": f"Feasibility ({count(d,'Assigned')})",
+            "label": {
+                "backgroundColor": "#2563EB",
+                "color": "#FFFFFF",
+                "borderColor": "#60A5FA"
+            }
+        },
+
+        {
+            "name": f"WIP ({count(d,'WIP')})",
+            "label": {
+                "backgroundColor": "#16A34A",
+                "color": "#FFFFFF",
+                "borderColor": "#4ADE80"
+            }
+        },
+
+        {
+            "name": f"UAT ({count(d,'UAT')})",
+            "label": {
+                "backgroundColor": "#16A34A",
+                "color": "#FFFFFF",
+                "borderColor": "#4ADE80"
+            }
+        },
+
+        {
+            "name": f"Completed ({count(d,'Completed')})",
+            "label": {
+                "backgroundColor": "#16A34A",
+                "color": "#FFFFFF",
+                "borderColor": "#4ADE80"
+            }
+        },
+
+        {
+            "name": f"Rejected ({count(d,'Rejected')})",
+            "label": {
+                "backgroundColor": "#16A34A",
+                "color": "#FFFFFF",
+                "borderColor": "#4ADE80"
+            },
             "children": [
+
                 {
-                    "name": "Queued / Feasibility Study",
-                    "children": [
-                        {
-                            "name": "Customer Requirement",
-                            "children": [
-                                {"name": "WIP"},
-                                {"name": "UAT"},
-                                {"name": "Completed"}
-                            ]
-                        },
-                        {
-                            "name": "Internal",
-                            "children": [
-                                {"name": "WIP"},
-                                {"name": "UAT"},
-                                {"name": "Completed"}
-                            ]
-                        }
-                    ]
+                    "name": f"Technical ({reject(d,'Technical Rejection')})",
+                    "label": {
+                        "backgroundColor": "#16A34A",
+                        "color": "#FFFFFF",
+                        "borderColor": "#4ADE80"
+                    }
                 },
+
                 {
-                    "name": "Rejected",
-                    "children": [
-                        {"name": "Technical Rejection"},
-                        {"name": "Business Rejection"}
-                    ]
+                    "name": f"Business ({reject(d,'Business Rejection')})",
+                    "label": {
+                        "backgroundColor": "#16A34A",
+                        "color": "#FFFFFF",
+                        "borderColor": "#4ADE80"
+                    }
                 }
             ]
         }
+    ]
 
-    tree = {
-        "name": f"EFS IDEATION ({len(df)})",
-        "children": [
-            {
-                "name": f"Customer ({len(customer_df)})",
-                "children": build_tree(customer_df)
-            },
-            {
-                "name": f"Internal ({len(internal_df)})",
-                "children": build_tree(internal_df)
-            }
-        ]
-    }
 
-    option = {
-        "backgroundColor": "#0B0B0D",
-        "series": [{
-            "type": "tree",
-            "data": [tree],
-            "symbol": "roundRect",
-            "orient": "LR",
-            "expandAndCollapse": True,
-            "initialTreeDepth": -1,
-            "top": "5%",
-            "bottom": "5%",
-            "left": "18%",
-            "right": "20%",
+customer_df = df[df["category"] == "Customer Requirement"]
+internal_df = df[df["category"] == "Internal"]
+
+tree = {
+
+    "name": f"EFS IDEATION ({len(df)})",
+
+    "label": {
+        "backgroundColor": "#EA580C",
+        "color": "#FFFFFF",
+        "borderColor": "#FDBA74"
+    },
+
+    "children": [
+
+        {
+            "name": f"Customer ({len(customer_df)})",
             "label": {
+                "backgroundColor": "#EA580C",
                 "color": "#FFFFFF",
-                "fontSize": 11,
-                "fontWeight": "bold",
-                "backgroundColor": "#1E1E24",
-                "borderColor": "#FF6A00",
-                "borderWidth": 2,
-                "borderRadius": 6,
-                "padding": [6, 12],
+                "borderColor": "#FDBA74"
+            },
+            "children": build_tree(customer_df)
+        },
+
+        {
+            "name": f"Internal ({len(internal_df)})",
+            "label": {
+                "backgroundColor": "#EA580C",
+                "color": "#FFFFFF",
+                "borderColor": "#FDBA74"
+            },
+            "children": build_tree(internal_df)
+        }
+    ]
+}
+
+option = {
+
+    "backgroundColor": "#0B0B0D",
+
+    "series": [{
+
+        "type": "tree",
+
+        "data": [tree],
+
+        "symbol": "roundRect",
+
+        "orient": "LR",
+
+        "expandAndCollapse": True,
+
+        "initialTreeDepth": -1,
+
+        "top": "5%",
+        "bottom": "5%",
+        "left": "18%",
+        "right": "20%",
+
+        "label": {
+
+            "color": "#FFFFFF",
+
+            "fontSize": 11,
+
+            "fontWeight": "bold",
+
+            "backgroundColor": "#1E1E24",
+
+            "borderColor": "#FF6A00",
+
+            "borderWidth": 2,
+
+            "borderRadius": 6,
+
+            "padding": [6, 12],
+
+            "width": 170,
+
+            "lineHeight": 18,
+
+            "overflow": "break",
+
+            "distance": 40,
+
+            "formatter": "{b}"
+        },
+
+        "leaves": {
+            "label": {
                 "width": 170,
-                "lineHeight": 18,
-                "overflow": "break",
-                "distance": 40,
-                "formatter": "{b}"
-            },
-            "lineStyle": {
-                "color": "#FF6A00",
-                "width": 2
-            },
-            "emphasis": {
-                "focus": "descendant",
-                "label": {
-                    "backgroundColor": "#FF6A00",
-                    "color": "#000"
-                }
+                "overflow": "break"
             }
-        }]
-    }
+        },
 
-    st_echarts(option, height="550px")
+        "lineStyle": {
+            "color": "#FF6A00",
+            "width": 2
+        },
 
-    st.divider()
+        "emphasis": {
+            "focus": "descendant",
+            "label": {
+                "backgroundColor": "#FF6A00",
+                "color": "#000"
+            }
+        }
+    }]
+}
+
+st_echarts(option, height="550px")
+
+st.divider()
+   
 
     # =========================================================
     # KANBAN BOARD
