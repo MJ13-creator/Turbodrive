@@ -229,21 +229,23 @@ elif menu == "PL Assignment":
 
     st.subheader("Assign Engineer")
 
-    df = clean_df(pd.DataFrame(get_all()))
+    data = get_all()
+    df = clean_df(pd.DataFrame(data if data else []))
 
-# =========================================================
-# AUTOMATION ENGINEERS FROM ADMIN
-# =========================================================
-engineer_users = [
-    u["email"]
-    for u in permission_data
-    if u.get("role") == "automation engineer"
-]
-engineer_users = sorted(engineer_users)
+    # =====================================================
+    # AUTOMATION ENGINEERS
+    # =====================================================
+    engineer_users = [
+        u["email"]
+        for u in permission_data
+        if u.get("role") == "automation engineer"
+    ]
+
+    engineer_users = sorted(list(set(engineer_users)))
 
     for item in df.to_dict("records"):
 
-        if item["status"] == "New Idea":
+        if item.get("status") == "New Idea":
 
             st.markdown(
                 f"""
@@ -269,15 +271,16 @@ engineer_users = sorted(engineer_users)
 
             if st.button("Assign", key=f"assign_{item['id']}"):
 
-                update_idea(item["id"], {
-
-                    "assigned_engineer": eng,
-                    "status": "Assigned",
-                    "assigned_date": datetime.now().strftime("%Y-%m-%d %H:%M")
-                })
+                update_idea(
+                    item["id"],
+                    {
+                        "assigned_engineer": eng,
+                        "status": "Assigned",
+                        "assigned_date": datetime.now().strftime("%Y-%m-%d %H:%M")
+                    }
+                )
 
                 st.success("Moved to next stage")
-
                 st.rerun()
 
 # =========================================================
