@@ -491,101 +491,9 @@ elif menu == "Approval":
 # =========================================================
 elif menu == "Dashboard":
 
-    # =========================================================
-    # 🎨 BLACK - ORANGE THEME
-    # =========================================================
     st.markdown("""
-    <style>
-
-    .stApp {
-        background: linear-gradient(135deg, #0B0B0D, #141414, #1C1C1F);
-        color: #F5F5F5;
-    }
-
-    h1, h2, h3 {
-        color: #FFB062 !important;
-        font-weight: 700;
-    }
-
-    p, div, span, label {
-        color: #CFCFCF;
-    }
-
-    section[data-testid="stSidebar"] {
-        background-color: #131313;
-        border-right: 1px solid rgba(255,122,26,0.2);
-    }
-
-    [data-testid="stMetricValue"] {
-        color: #FF7A1A !important;
-        font-weight: 800;
-        font-size: 24px;
-    }
-
-    [data-testid="stMetricLabel"] {
-        color: #CFCFCF !important;
-    }
-
-    div[data-testid="metric-container"] {
-        background: rgba(255,255,255,0.04);
-        border: 1px solid rgba(255,122,26,0.25);
-        border-radius: 14px;
-        padding: 12px;
-        box-shadow: 0px 6px 20px rgba(0,0,0,0.45);
-    }
-
-    .stButton>button {
-        background: linear-gradient(90deg, #FF6A00, #FFB062);
-        color: #0B0B0D;
-        border-radius: 8px;
-        border: none;
-        font-weight: 700;
-    }
-
-    .stButton>button:hover {
-        box-shadow: 0px 0px 16px #FF6A00;
-        transform: scale(1.03);
-    }
-
-    .streamlit-expanderHeader {
-        color: #FFB062 !important;
-        font-weight: 600;
-    }
-
-    .card {
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(255,122,26,0.18);
-        border-radius: 14px;
-        padding: 12px;
-        box-shadow: 0px 6px 20px rgba(0,0,0,0.45);
-    }
-
-    div[data-testid="stDataFrame"] {
-        background-color: #141414;
-        color: #F5F5F5;
-    }
-
-    thead tr th {
-        background-color: #1C1C1F !important;
-        color: #FFB062 !important;
-    }
-
-    tbody tr {
-        background-color: rgba(255,255,255,0.02);
-    }
-
-    tbody tr:hover {
-        background-color: rgba(255,122,26,0.08);
-    }
-
-    hr {
-        border: 1px solid rgba(255,122,26,0.2);
-    }
-
-    </style>
+    <h2>📊 Dashboard</h2>
     """, unsafe_allow_html=True)
-
-    st.markdown("<h2>📊 Dashboard</h2>", unsafe_allow_html=True)
 
     # =========================================================
     # DATA LOAD
@@ -593,48 +501,16 @@ elif menu == "Dashboard":
     df = pd.DataFrame(get_all())
 
     if df.empty:
-       st.stop()
+        st.stop()
 
-df = df.copy()
+    df = df.copy()
 
-# CLEANING
-df["status"] = df["status"].fillna("New Idea")
-df["category"] = df["category"].fillna("")
-df["roi"] = pd.to_numeric(df["roi"], errors="coerce").fillna(0)
+    df["status"] = df["status"].fillna("New Idea")
+    df["category"] = df["category"].fillna("")
+    df["roi"] = pd.to_numeric(df["roi"], errors="coerce").fillna(0)
 
-# ✅ MUST BE BEFORE TREE
-customer_df = df[df["category"] == "Customer Requirement"]
-internal_df = df[df["category"] == "Internal"]
-
-def count(d, status):
-    return len(d[d["status"] == status])
-
-def reject(d, reason):
-    return len(d[(d["status"] == "Rejected") & (d["rejection_reason"] == reason)])
-
-def build_tree(d):
-    return [
-        {
-            "name": f"Queued ({count(d,'New Idea')})"
-        },
-        {
-            "name": f"Feasibility ({count(d,'Assigned')})"
-        }
-    ]
-
-tree = {
-    "name": f"EFS IDEATION ({len(df)})",
-    "children": [
-        {
-            "name": f"Customer ({len(customer_df)})",
-            "children": build_tree(customer_df)
-        },
-        {
-            "name": f"Internal ({len(internal_df)})",
-            "children": build_tree(internal_df)
-        }
-    ]
-}
+    customer_df = df[df["category"] == "Customer Requirement"]
+    internal_df = df[df["category"] == "Internal"]
 
     # =========================================================
     # KPI METRICS
@@ -644,211 +520,108 @@ tree = {
     with c1:
         st.metric(
             "Customer ROI",
-            round(df[df["category"]=="Customer Requirement"]["roi"].sum(), 2)
+            round(df[df["category"] == "Customer Requirement"]["roi"].sum(), 2)
         )
 
     with c2:
         st.metric(
             "Internal ROI",
-            round(df[df["category"]=="Internal"]["roi"].sum(), 2)
+            round(df[df["category"] == "Internal"]["roi"].sum(), 2)
         )
 
     st.divider()
 
     # =========================================================
-    # TREE
+    # IDEATION TREE
     # =========================================================
-    st.subheader(" Ideation Tree")
+    st.subheader("Ideation Tree")
 
-    def count(d, status):
-        return len(d[d["status"] == status])
+    def build_tree(d):
 
-    def reject(d, reason):
-        return len(d[
-            (d["status"] == "Rejected") &
-            (d["rejection_reason"] == reason)
-        ])
-
-    def build_tree():
-
-          return {
-              "name": "Ideation",
-
-               "children": [
-
-            {
-                "name": "Queued / Feasibility Study",
-                "itemStyle": {"color": "#3B82F6"},  # Blue
-
-                "children": [
-
-                    {
-                        "name": "Customer Requirement",
-                        "itemStyle": {"color": "#22C55E"},  # Green
-
-                        "children": [
-                            {"name": "WIP", "itemStyle": {"color": "#22C55E"}},
-                            {"name": "UAT", "itemStyle": {"color": "#22C55E"}},
-                            {"name": "Completed", "itemStyle": {"color": "#22C55E"}}
-                        ]
-                    },
-
-                    {
-                        "name": "Internal",
-                        "itemStyle": {"color": "#22C55E"},
-
-                        "children": [
-                            {"name": "WIP", "itemStyle": {"color": "#22C55E"}},
-                            {"name": "UAT", "itemStyle": {"color": "#22C55E"}},
-                            {"name": "Completed", "itemStyle": {"color": "#22C55E"}}
-                        ]
-                    },
-
-                    {
-                        "name": "Accepted",
-                        "itemStyle": {"color": "#22C55E"}
-                    }
-                ]
-            },
-
-            {
-                "name": "Rejected",
-                "itemStyle": {"color": "#FB7185"},  # Light Red
-
-                "children": [
-
-                    {
-                        "name": "Technical Rejection",
-                        "itemStyle": {"color": "#FB7185"}
-                    },
-
-                    {
-                        "name": "Business Rejection",
-                        "itemStyle": {"color": "#FB7185"}
-                    }
-                ]
-            }
-        ]
-    }
-
-    #customer_df = df[df["category"] == "Customer Requirement"]
-    #internal_df = df[df["category"] == "Internal"]
+        return {
+            "name": "Ideation",
+            "children": [
+                {
+                    "name": "Queued / Feasibility Study",
+                    "children": [
+                        {
+                            "name": "Customer Requirement",
+                            "children": [
+                                {"name": "WIP"},
+                                {"name": "UAT"},
+                                {"name": "Completed"}
+                            ]
+                        },
+                        {
+                            "name": "Internal",
+                            "children": [
+                                {"name": "WIP"},
+                                {"name": "UAT"},
+                                {"name": "Completed"}
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "name": "Rejected",
+                    "children": [
+                        {"name": "Technical Rejection"},
+                        {"name": "Business Rejection"}
+                    ]
+                }
+            ]
+        }
 
     tree = {
-
         "name": f"EFS IDEATION ({len(df)})",
-
-        "label": {
-            "backgroundColor": "#EA580C",
-            "color": "#FFFFFF",
-            "borderColor": "#FDBA74"
-        },
-
         "children": [
-
             {
                 "name": f"Customer ({len(customer_df)})",
-
-                "label": {
-                    "backgroundColor": "#EA580C",
-                    "color": "#FFFFFF",
-                    "borderColor": "#FDBA74"
-                },
-
                 "children": build_tree(customer_df)
             },
-
             {
                 "name": f"Internal ({len(internal_df)})",
-
-                "label": {
-                    "backgroundColor": "#EA580C",
-                    "color": "#FFFFFF",
-                    "borderColor": "#FDBA74"
-                },
-
                 "children": build_tree(internal_df)
             }
         ]
     }
 
     option = {
-
         "backgroundColor": "#0B0B0D",
-
         "series": [{
-
             "type": "tree",
-
             "data": [tree],
-
             "symbol": "roundRect",
-
             "orient": "LR",
-
             "expandAndCollapse": True,
-
             "initialTreeDepth": -1,
-
             "top": "5%",
             "bottom": "5%",
             "left": "18%",
             "right": "20%",
-
             "label": {
-
                 "color": "#FFFFFF",
-
                 "fontSize": 11,
-
                 "fontWeight": "bold",
-
                 "backgroundColor": "#1E1E24",
-
                 "borderColor": "#FF6A00",
-
                 "borderWidth": 2,
-
                 "borderRadius": 6,
-
                 "padding": [6, 12],
-
                 "width": 170,
-
                 "lineHeight": 18,
-
                 "overflow": "break",
-
                 "distance": 40,
-
                 "formatter": "{b}"
             },
-
-            "leaves": {
-
-                "label": {
-
-                    "width": 170,
-
-                    "overflow": "break"
-                }
-            },
-
             "lineStyle": {
-
                 "color": "#FF6A00",
-
                 "width": 2
             },
-
             "emphasis": {
-
                 "focus": "descendant",
-
                 "label": {
-
                     "backgroundColor": "#FF6A00",
-
                     "color": "#000"
                 }
             }
@@ -878,7 +651,7 @@ tree = {
 
             for _, row in stage_df.iterrows():
 
-                with st.expander(str(row.get("idea_name","No Idea Name"))):
+                with st.expander(str(row.get("idea_name", "No Idea Name"))):
 
                     st.write(f"👤 {row.get('name','-')}")
                     st.write(f"📌 {row.get('project','-')}")
@@ -905,10 +678,8 @@ tree = {
     table_df = df.copy()
 
     cols = []
-
     for c in table_df.columns:
         cols.append(c)
-
         if c == "status":
             break
 
