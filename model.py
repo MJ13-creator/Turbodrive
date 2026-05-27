@@ -322,6 +322,10 @@ elif menu == "Feasibility":
                 f"🧑‍💼 PL / SPL: {item.get('pl_name','-')}"
             )
 
+            st.write(
+                f"🧑‍💼 Idea Submitter Name: {item.get('name','-')}"
+            )
+
             manual = st.number_input(
                 "Manual Effort",
                 key=f"m_{item['id']}"
