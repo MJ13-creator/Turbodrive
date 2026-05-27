@@ -785,6 +785,7 @@ elif menu == "Dashboard":
 
                     st.write(f"👤 {row.get('name','-')}")
                     st.write(f"📌 {row.get('project','-')}")
+                    st.write(f"👤 {row.get('assigned_engineer','-')}")
 
                     new_status = st.selectbox(
                         "Move to",
