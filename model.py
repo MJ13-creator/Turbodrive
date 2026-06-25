@@ -720,6 +720,7 @@ def render_kanban_board(ideas):
                 eng       = idea.get("assigned_engineer", "")
             
                 proj      = idea.get("project", "-")
+                name      = idea.get("name","-")
                 cat       = idea.get("category", "")
                 delivery  = idea.get("delivery_date", "")
                 hold      = idea.get("hold_reason", "")
@@ -731,7 +732,7 @@ def render_kanban_board(ideas):
                         f'<div style="border-left:3px solid {color};padding-left:8px;margin-bottom:6px;">'
                         f'<span style="font-size:11px;color:#64748b;">📌 {proj}</span><br>'
                         f'<span style="font-size:11px;color:#64748b;">👤 {idea.get("name","-")}</span><br>'
-                        f'<span style="font-size:11px;color:#64748b;">👷 {eng_name}</span>'
+                        f'<span style="font-size:11px;color:#64748b;">👷 {name}</span>'
                         + (f'<br><span style="font-size:10px;color:#0369a1;">📅 {delivery}</span>' if delivery else "")
                         + (f'<br><span style="font-size:10px;color:#b45309;">⏸ {hold[:30]}</span>' if hold else "")
                         + f'</div>',
