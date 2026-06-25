@@ -718,7 +718,7 @@ def render_kanban_board(ideas):
 
             for idea in bucket:
                 eng       = idea.get("assigned_engineer", "")
-                eng_name  = eng.split("@")[0].replace(".", " ").title() 
+            
                 proj      = idea.get("project", "-")
                 cat       = idea.get("category", "")
                 delivery  = idea.get("delivery_date", "")
