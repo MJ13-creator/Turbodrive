@@ -1547,7 +1547,7 @@ def main():
           <span style="font-size:20px;font-weight:900;
                background:linear-gradient(135deg,{t['primary']},{t['secondary']});
                -webkit-background-clip:text;background-clip:text;color:transparent;">
-            ⚡ TURBO DRIVE
+             TURBO DRIVE
           </span>
           <div style="color:#94a3b8;font-size:10px;margin-top:2px;">Automation Workflow</div>
         </div>""", unsafe_allow_html=True)
