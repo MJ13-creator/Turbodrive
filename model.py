@@ -817,7 +817,7 @@ def page_login():
                         st.rerun()
 
         col1, col2, col3 = st.columns(3)
-        with col1: st.caption(f"Default pw: **{DEFAULT_PW}**")
+        
         with col2:
             if st.button("🔑 Change Password"):
                 st.session_state["_page_override"] = "change_password"; st.rerun()
