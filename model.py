@@ -1063,7 +1063,7 @@ def page_feasibility():
                 st.caption(f"📅 Provisional delivery: {idea['delivery_date']}")
 
             with st.form(f"feas_{idea['id']}"):
-                st.markdown("##### 📊 ROI Calculator")
+                st.markdown("##### ROI Calculator")
                 col1,col2,col3 = st.columns(3)
                 with col1: manual = st.number_input("Manual Effort (hrs)", min_value=0.0, step=0.5, key=f"m_{idea['id']}")
                 with col2: fte    = st.number_input("FTE Count", min_value=0.0, step=0.1, key=f"f_{idea['id']}")
@@ -1172,7 +1172,7 @@ def page_approval():
 #  PAGE: DASHBOARD  (unchanged — no ocean-blue override here)
 # ══════════════════════════════════════════════════════════════════════════════
 def page_dashboard():
-    page_header("Dashboard 📊")
+    page_header("Dashboard ")
     ideas = get_all()
     if not ideas:
         st.info("No ideas yet.")
