@@ -18,8 +18,8 @@ from supabase import create_client, Client
 # Use the SERVICE ROLE key (not anon) — it bypasses RLS completely.
 # Supabase dashboard → Project Settings → API → service_role (secret) key.
 # Keep this file private / in a private GitHub repo.
-SUPABASE_URL = "https://weqxfwelvihoutdjxigk.supabase.co"   # ← paste your Project URL
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndlcXhmd2Vsdmlob3V0ZGp4aWdrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNzU4MTMsImV4cCI6MjA5Nzk1MTgxM30.eDJ0nCils5X1FI9Zrv7C6HLj2GKXmmpCx5gzU1TKQ5Y"         # ← paste service_role key (not anon)
+SUPABASE_URL = "https://mvoxhdbcxmmozulenlvh.supabase.co"   # ← paste your Project URL
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12b3hoZGJjeG1tb3p1bGVubHZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5MTczNDIsImV4cCI6MjA5NDQ5MzM0Mn0.6Fhrqo6sfMnO3KklN5dwLup0BVbp0_ga8k5hi3LgXQU"         # ← paste service_role key (not anon)
 
 @st.cache_resource
 def get_supabase() -> Client:
