@@ -5,3 +5,4 @@ streamlit-echarts
 requests
 openpyxl
 supabase
+WerkzeugSecurityCLI
