@@ -36,7 +36,7 @@ REJ_REASONS= ["Technical Rejection","Business Rejection"]
 ROLES_LIST = ["super user","normal user","automation engineer","automation pl","pl/spl"]
 DEFAULT_PW = "admin123"
 
-SUPPORT_NAME  = "Manoj JAGADEESH","Raja AMMAIAPPAN","Naveen KONNUR"
+SUPPORT_NAME  = "Manoj JAGADEESH, Raja AMMAIAPPAN, Naveen KONNUR"
 SUPPORT_EMAIL = "manoj.jagadeesh@alten-india.com"
 
 ALTEN_LOGO_URL = "https://www.alten.com/wp-content/uploads/2019/01/favicon-alten.png"
@@ -531,17 +531,19 @@ def render_kanban_board(ideas):
             if not bucket:
                 st.caption("_Empty_")
             for idea in bucket:
-                eng      = idea.get("assigned_engineer","")
-                proj     = idea.get("project","-")
-                delivery = idea.get("delivery_date","")
-                hold     = idea.get("hold_reason","")
-                label    = idea.get("idea_name","No Name")[:28]
+                eng      = idea.get("assigned_engineer") or ""
+                proj     = idea.get("project") or "-"
+                delivery = idea.get("delivery_date") or ""
+                hold     = idea.get("hold_reason") or ""
+                name     = idea.get("name") or "-"
+                eng_name = eng.split("@")[0] if "@" in eng else (eng or "—")
+                label    = (idea.get("idea_name") or "No Name")[:28]
                 with st.expander(label, expanded=False):
                     st.markdown(
                         f'<div style="border-left:3px solid {color};padding-left:8px;margin-bottom:6px;">'
                         f'<span style="font-size:clamp(9px,0.85vw,11px);color:#64748b;">📌 {proj}</span><br>'
-                        f'<span style="font-size:clamp(9px,0.85vw,11px);color:#64748b;">👤 {idea.get("name","-")}</span><br>'
-                        f'<span style="font-size:clamp(9px,0.85vw,11px);color:#64748b;">👷 {eng.split("@")[0] if "@" in eng else eng or "—"}</span>'
+                        f'<span style="font-size:clamp(9px,0.85vw,11px);color:#64748b;">👤 {name}</span><br>'
+                        f'<span style="font-size:clamp(9px,0.85vw,11px);color:#64748b;">👷 {eng_name}</span>'
                         +(f'<br><span style="font-size:clamp(8px,0.75vw,10px);color:#0369a1;">📅 {delivery}</span>' if delivery else "")
                         +(f'<br><span style="font-size:clamp(8px,0.75vw,10px);color:#b45309;">⏸ {hold[:30]}</span>' if hold else "")
                         +f'</div>', unsafe_allow_html=True,
