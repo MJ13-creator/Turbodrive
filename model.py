@@ -375,13 +375,10 @@ def render_copyright():
     )
 
 def page_header(title: str):
-    t = THEMES.get(ss("theme","ALTEN Red & Blue"), THEMES["ALTEN Red & Blue"])
     st.markdown(f"""
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
       <img src="{ALTEN_LOGO_URL}" style="height:28px;object-fit:contain;" alt="ALTEN"/>
-      <span style="font-size:24px;font-weight:800;
-            background:linear-gradient(135deg,{t['primary']},{t['secondary']});
-            -webkit-background-clip:text;background-clip:text;color:transparent;">
+      <span style="font-size:24px;font-weight:800;color:#E30613;letter-spacing:0.5px;">
          {title}
       </span>
     </div>""", unsafe_allow_html=True)
@@ -742,29 +739,46 @@ def page_pl_assignment():
     with right_col:
         st.markdown("<span style='font-size:13px;font-weight:600;'>📊 Engineer Task Load</span>", unsafe_allow_html=True)
         if engineers:
-            eng_counts = {}
+            MAX_TASKS = 10   # max expected tasks — gauge full at 10
             for eng in engineers:
-                eng_counts[eng.split("@")[0]] = len([
+                active = len([
                     i for i in all_ideas
                     if i.get("assigned_engineer")==eng
                     and i.get("status") in {"Assigned","WIP","UAT","Hold/Park"}
                 ])
-            st_echarts({
-                "tooltip": {"trigger":"axis"},
-                "grid": {"left":"4%","right":"4%","bottom":"30%","top":"8%","containLabel":True},
-                "xAxis": {
-                    "type":"category",
-                    "data": list(eng_counts.keys()),
-                    "axisLabel":{"rotate":35,"fontSize":9,"interval":0},
-                },
-                "yAxis": {"type":"value","name":"Active Tasks","nameTextStyle":{"fontSize":9},"minInterval":1},
-                "series":[{
-                    "type":"bar","data":list(eng_counts.values()),
-                    "itemStyle":{"color":"#1a4fad"},
-                    "barMaxWidth":32,
-                    "label":{"show":True,"position":"top","fontSize":9},
-                }]
-            }, height="220px")
+                eng_label = eng.split("@")[0].replace("."," ").title()
+                load_pct  = min(active / MAX_TASKS, 1.0) * 100
+                # colour: green→amber→red based on load
+                needle_color = ("#059669" if load_pct < 40
+                                else "#b45309" if load_pct < 75
+                                else "#dc2626")
+                gauge_opt = {
+                    "series":[{
+                        "type":"gauge",
+                        "radius":"85%",
+                        "startAngle":200,"endAngle":-20,
+                        "min":0,"max":MAX_TASKS,
+                        "splitNumber":5,
+                        "axisLine":{
+                            "lineStyle":{
+                                "width":10,
+                                "color":[[0.4,"#059669"],[0.75,"#b45309"],[1,"#dc2626"]]
+                            }
+                        },
+                        "pointer":{"itemStyle":{"color":"auto"},"length":"60%","width":4},
+                        "axisTick":{"distance":-15,"length":6,"lineStyle":{"color":"#fff","width":1}},
+                        "splitLine":{"distance":-20,"length":12,"lineStyle":{"color":"#fff","width":2}},
+                        "axisLabel":{"color":"inherit","distance":18,"fontSize":8},
+                        "detail":{
+                            "valueAnimation":True,
+                            "formatter":f"{active} tasks",
+                            "color":"inherit","fontSize":11,"offsetCenter":[0,"60%"]
+                        },
+                        "title":{"offsetCenter":[0,"85%"],"fontSize":9,"color":"#64748b"},
+                        "data":[{"value":active,"name":eng_label}],
+                    }]
+                }
+                st_echarts(gauge_opt, height="160px", key=f"gauge_{eng}")
         else:
             st.info("No automation engineers configured.")
 
@@ -1080,49 +1094,24 @@ def page_dashboard():
                    height="220px")
 
     with ch2:
-        st.markdown("<span style='font-size:clamp(10px,1vw,13px);font-weight:600;'>Customer & Region — Count + ROI</span>", unsafe_allow_html=True)
-        # Customer pie (count)
+        st.markdown("<span style='font-size:clamp(10px,1vw,13px);font-weight:600;'>Customer — Count &amp; ROI</span>", unsafe_allow_html=True)
         cust_data = {}
         for i in ideas:
             c = i.get("customer","") or "Unknown"
-            cust_data[c] = cust_data.get(c,{"count":0,"roi":0.0})
+            if c not in cust_data: cust_data[c] = {"count":0,"roi":0.0}
             cust_data[c]["count"] += 1
             cust_data[c]["roi"]   += float(i.get("roi",0) or 0)
-        # Region pie (count)
-        reg_data = {}
-        for i in ideas:
-            r = i.get("region","") or "Unknown"
-            reg_data[r] = reg_data.get(r,{"count":0,"roi":0.0})
-            reg_data[r]["count"] += 1
-            reg_data[r]["roi"]   += float(i.get("roi",0) or 0)
-
         cust_palette = ["#E30613","#00AEEF","#7c3aed","#059669","#0d9488","#b45309","#0369a1"]
-        reg_palette  = ["#1a4fad","#f97316","#9333ea","#0891b2","#16a34a","#dc2626","#d97706"]
-
-        c_pie = [{"value":v["count"],"name":f'{k} ({round(v["roi"],1)} ROI)',
-                  "itemStyle":{"color":cust_palette[i%len(cust_palette)]}}
-                 for i,(k,v) in enumerate(cust_data.items())]
-        r_pie = [{"value":v["count"],"name":f'{k} ({round(v["roi"],1)} ROI)',
-                  "itemStyle":{"color":reg_palette[i%len(reg_palette)]}}
-                 for i,(k,v) in enumerate(reg_data.items())]
-
+        c_pie_cnt = [{"value":v["count"],
+                      "name":f'{k}\n({round(v["roi"],1)} ROI)',
+                      "itemStyle":{"color":cust_palette[idx%len(cust_palette)]}}
+                     for idx,(k,v) in enumerate(cust_data.items())]
         st_echarts({
-            "tooltip":{"trigger":"item","formatter":"{a}<br/>{b}: {c} ideas ({d}%)"},
-            "legend":{"show":False},
-            "series":[
-                {"name":"Customer","type":"pie",
-                 "radius":["0%","35%"],"center":["50%","50%"],
-                 "data":c_pie,
-                 "label":{"position":"inside","fontSize":8,"formatter":"{b}"},
-                 "labelLine":{"show":False}},
-                {"name":"Region","type":"pie",
-                 "radius":["42%","65%"],"center":["50%","50%"],
-                 "data":r_pie,
-                 "label":{"fontSize":8,"formatter":"{b}"},
-                 "labelLine":{"length":6,"length2":4}},
-            ]
+            "tooltip":{"trigger":"item","formatter":"{b}: {c} ideas ({d}%)"},
+            "series":[{"type":"pie","radius":["35%","65%"],"data":c_pie_cnt,
+                       "label":{"fontSize":9,"formatter":"{b}"},
+                       "labelLine":{"length":8,"length2":5}}]
         }, height="220px")
-        st.caption("Inner ring = Customer · Outer ring = Region · Labels show ROI")
 
     with ch3:
         st.markdown("<span style='font-size:clamp(10px,1vw,13px);font-weight:600;'>Hours Saved by Project</span>", unsafe_allow_html=True)
@@ -1153,44 +1142,33 @@ def page_dashboard():
                              "borderRadius":5,"padding":[4,8],"position":"inside",
                              "align":"center","fontSize":10,"fontWeight":"bold"}
             for child in node.get("children",[]): add_label_boxes(child)
+        # Tree flow: Ideation → Triage/Feasibility(Queued) → Accepted → Customer → WIP / Deployed
+        #                                                              → Internal
+        #                                              → Rejected
         tree_data = {
-            "name":f"Ideation ({total})","itemStyle":{"color":"#E30613"},
+            "name":f"Ideation ({total})","itemStyle":{"color":"#1a4fad"},
             "children":[
-                {"name":f"Triaged ({cnt('Assigned')})","itemStyle":{"color":"#1a4fad"},
+                {"name":f"Triage / Feasibility Study\n(Queued: {cnt('Assigned')})","itemStyle":{"color":"#1a4fad"},
                  "children":[
-                     {"name":f"Customer ({cust_cnt})","itemStyle":{"color":"#00498F"},
+                     {"name":f"Accepted ({cnt('WIP')+cnt('UAT')+cnt('Completed')})","itemStyle":{"color":"#059669"},
                       "children":[
-                          {"name":f"WIP ({cs('Customer Requirement','WIP')})","itemStyle":{"color":"#0d9488"}},
-                          {"name":f"UAT ({cs('Customer Requirement','UAT')})","itemStyle":{"color":"#0ea5e9"}},
-                          {"name":f"Done ({cs('Customer Requirement','Completed')})","itemStyle":{"color":"#059669"}},
+                          {"name":f"Customer ({cust_cnt})","itemStyle":{"color":"#00498F"},
+                           "children":[
+                               {"name":f"WIP ({cs('Customer Requirement','WIP')+cs('Customer Requirement','UAT')})","itemStyle":{"color":"#0d9488"}},
+                               {"name":f"Deployed ({cs('Customer Requirement','Completed')})","itemStyle":{"color":"#059669"}},
+                           ]},
+                          {"name":f"Internal ({int_cnt})","itemStyle":{"color":"#0ea5e9"},
+                           "children":[
+                               {"name":f"WIP ({cs('Internal','WIP')+cs('Internal','UAT')})","itemStyle":{"color":"#0d9488"}},
+                               {"name":f"Deployed ({cs('Internal','Completed')})","itemStyle":{"color":"#059669"}},
+                           ]},
                       ]},
-                     {"name":f"Internal ({int_cnt})","itemStyle":{"color":"#0ea5e9"},
+                     {"name":f"Rejected ({cnt('Rejected')})","itemStyle":{"color":"#dc2626"},
                       "children":[
-                          {"name":f"WIP ({cs('Internal','WIP')})","itemStyle":{"color":"#0d9488"}},
-                          {"name":f"UAT ({cs('Internal','UAT')})","itemStyle":{"color":"#0ea5e9"}},
-                          {"name":f"Done ({cs('Internal','Completed')})","itemStyle":{"color":"#059669"}},
+                          {"name":f"Technical ({rs('Technical Rejection')})","itemStyle":{"color":"#ef4444"}},
+                          {"name":f"Business ({rs('Business Rejection')})","itemStyle":{"color":"#f97316"}},
                       ]},
                  ]},
-                {"name":f"Accepted ({cnt('WIP')+cnt('UAT')+cnt('Completed')})","itemStyle":{"color":"#059669"},
-                 "children":[
-                     {"name":f"Customer ({cust_cnt})","itemStyle":{"color":"#00498F"},
-                      "children":[
-                          {"name":f"WIP ({cs('Customer Requirement','WIP')})","itemStyle":{"color":"#0d9488"}},
-                          {"name":f"UAT ({cs('Customer Requirement','UAT')})","itemStyle":{"color":"#0ea5e9"}},
-                          {"name":f"Done ({cs('Customer Requirement','Completed')})","itemStyle":{"color":"#059669"}},
-                      ]},
-                     {"name":f"Internal ({int_cnt})","itemStyle":{"color":"#0ea5e9"},
-                      "children":[
-                          {"name":f"WIP ({cs('Internal','WIP')})","itemStyle":{"color":"#0d9488"}},
-                          {"name":f"UAT ({cs('Internal','UAT')})","itemStyle":{"color":"#0ea5e9"}},
-                          {"name":f"Done ({cs('Internal','Completed')})","itemStyle":{"color":"#059669"}},
-                      ]},
-                 ]},
-                {"name":f"Rejected ({cnt('Rejected')})","itemStyle":{"color":"#dc2626"},
-                 "children":[
-                     {"name":f"Technical ({rs('Technical Rejection')})","itemStyle":{"color":"#ef4444"}},
-                     {"name":f"Business ({rs('Business Rejection')})","itemStyle":{"color":"#f97316"}},
-                 ]}
             ]
         }
         add_label_boxes(tree_data)
@@ -1208,7 +1186,7 @@ def page_dashboard():
         }, height="400px")
 
     with wl_col:
-        st.markdown("##### 🌍 Ideas by Region")
+        st.markdown("##### 🌍 Region — Word Map")
         region_data = {}
         for i in ideas:
             r = i.get("region","") or "Unknown"
@@ -1219,44 +1197,46 @@ def page_dashboard():
         if not region_data:
             st.info("No region data yet.")
         else:
-            import pandas as pd
-            region_df = pd.DataFrame([
-                {"Region":k,"Ideas":v["count"],"ROI":round(v["roi"],2)}
-                for k,v in sorted(region_data.items(), key=lambda x: -x[1]["count"])
-            ])
-            bar_data = [{"value":v["count"],"name":k}
-                        for k,v in sorted(region_data.items(), key=lambda x: -x[1]["count"])]
+            # ── Region pie (count + ROI) ──────────────────────────────────
+            reg_palette = ["#1a4fad","#E30613","#9333ea","#0891b2","#16a34a","#dc2626","#d97706","#0d9488"]
+            r_pie = [{"value":v["count"],
+                      "name":f'{k}\n({round(v["roi"],1)} ROI)',
+                      "itemStyle":{"color":reg_palette[idx%len(reg_palette)]}}
+                     for idx,(k,v) in enumerate(
+                         sorted(region_data.items(), key=lambda x: -x[1]["count"]))]
             st_echarts({
-                "tooltip":{"trigger":"axis"},
-                "grid":{"left":"3%","right":"4%","bottom":"25%","containLabel":True},
-                "xAxis":{"type":"category","data":[d["name"] for d in bar_data],
-                         "axisLabel":{"rotate":35,"fontSize":9}},
-                "yAxis":[
-                    {"type":"value","name":"Ideas","nameTextStyle":{"fontSize":9},"axisLabel":{"fontSize":9}},
-                    {"type":"value","name":"ROI","nameTextStyle":{"fontSize":9},"axisLabel":{"fontSize":9}},
-                ],
-                "series":[
-                    {"name":"Ideas","type":"bar","data":[d["value"] for d in bar_data],
-                     "itemStyle":{"color":"#1a4fad"},"barMaxWidth":28},
-                    {"name":"ROI","type":"line","yAxisIndex":1,
-                     "data":[round(region_data[d["name"]]["roi"],1) for d in bar_data],
-                     "itemStyle":{"color":"#E30613"},"lineStyle":{"width":2},
-                     "symbol":"circle","symbolSize":6},
-                ],
-                "legend":{"data":["Ideas","ROI"],"bottom":0,"textStyle":{"fontSize":9}},
-            }, height="320px")
-            st.dataframe(region_df, use_container_width=True, hide_index=True,
-                         column_config={
-                             "Region":st.column_config.TextColumn(width="medium"),
-                             "Ideas": st.column_config.NumberColumn(width="small"),
-                             "ROI":   st.column_config.NumberColumn(format="%.2f",width="small"),
-                         })
+                "tooltip":{"trigger":"item","formatter":"{b}: {c} ideas ({d}%)"},
+                "series":[{"type":"pie","radius":["35%","65%"],"data":r_pie,
+                           "label":{"fontSize":9,"formatter":"{b}"},
+                           "labelLine":{"length":8,"length2":5}}]
+            }, height="200px")
+            # ── Word-map style bubble grid ────────────────────────────────
+            # Simulate word cloud with scaled font-size bubbles using HTML
+            max_count = max(v["count"] for v in region_data.values()) or 1
+            wc_html = '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;'
+            wc_html += 'justify-content:center;padding:10px 4px;">'
+            sorted_regions = sorted(region_data.items(), key=lambda x: -x[1]["count"])
+            colors = ["#E30613","#1a4fad","#059669","#7c3aed","#0891b2","#b45309","#9333ea","#0d9488"]
+            for idx,(region,val) in enumerate(sorted_regions):
+                ratio    = val["count"] / max_count
+                fs       = int(12 + ratio * 22)   # font 12–34px
+                pad_h    = int(6  + ratio * 10)
+                pad_v    = int(3  + ratio * 6)
+                opacity  = 0.75 + ratio * 0.25
+                col_hex  = colors[idx % len(colors)]
+                wc_html += (
+                    f'<span style="font-size:{fs}px;font-weight:700;color:{col_hex};'
+                    f'background:rgba(0,0,0,0.04);border-radius:6px;'
+                    f'padding:{pad_v}px {pad_h}px;opacity:{opacity:.2f};'
+                    f'cursor:default;line-height:1.4;" '
+                    f'title="{region}: {val['count']} ideas, ROI {round(val['roi'],1)}">'
+                    f'{region} <sup style="font-size:{max(8,fs-8)}px;">{val['count']}</sup></span>'
+                )
+            wc_html += '</div>'
+            st.markdown(wc_html, unsafe_allow_html=True)
+            st.caption("Size = idea count · Hover for ROI detail")
 
-    # ── Kanban Board ──────────────────────────────────────────────────────
-    st.markdown("##### 📋 Kanban Board")
-    render_kanban_board(ideas)
-
-    # ── All Ideas table + CSV ─────────────────────────────────────────────
+    # ── All Ideas table + CSV (above Kanban) ────────────────────────────
     st.markdown("##### 📄 All Ideas")
     search = st.text_input("🔎 Search ideas", placeholder="Filter by name, project, status…")
     import pandas as pd
@@ -1271,6 +1251,10 @@ def page_dashboard():
     csv_buf = io.StringIO()
     df.to_csv(csv_buf, index=False)
     st.download_button("⬇️ Download CSV", csv_buf.getvalue(), "turbodrive_ideas.csv", "text/csv")
+
+    # ── Kanban Board ──────────────────────────────────────────────────────
+    st.markdown("##### 📋 Kanban Board")
+    render_kanban_board(ideas)
 
     render_copyright()
 
