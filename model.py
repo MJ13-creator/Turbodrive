@@ -1189,52 +1189,58 @@ def page_dashboard():
         st.markdown("##### 🌍 Region — Word Map")
         region_data = {}
         for i in ideas:
-            r = i.get("region","") or "Unknown"
+            r = i.get("region","") or ""
+            if not r:
+                continue   # skip ideas with no region set
             if r not in region_data: region_data[r] = {"count":0,"roi":0.0}
             region_data[r]["count"] += 1
             region_data[r]["roi"]   += float(i.get("roi",0) or 0)
 
+        no_region_count = len([i for i in ideas if not (i.get("region","") or "").strip()])
+
         if not region_data:
-            st.info("No region data yet.")
+            st.info(f"No region data yet — {no_region_count} idea(s) have no region assigned.")
         else:
-            # ── Region pie (count + ROI) ──────────────────────────────────
-            reg_palette = ["#1a4fad","#E30613","#9333ea","#0891b2","#16a34a","#dc2626","#d97706","#0d9488"]
-            r_pie = [{"value":v["count"],
-                      "name":f'{k}\n({round(v["roi"],1)} ROI)',
-                      "itemStyle":{"color":reg_palette[idx%len(reg_palette)]}}
-                     for idx,(k,v) in enumerate(
-                         sorted(region_data.items(), key=lambda x: -x[1]["count"]))]
-            st_echarts({
-                "tooltip":{"trigger":"item","formatter":"{b}: {c} ideas ({d}%)"},
-                "series":[{"type":"pie","radius":["35%","65%"],"data":r_pie,
-                           "label":{"fontSize":9,"formatter":"{b}"},
-                           "labelLine":{"length":8,"length2":5}}]
-            }, height="200px")
-            # ── Word-map style bubble grid ────────────────────────────────
-            # Simulate word cloud with scaled font-size bubbles using HTML
+            # ── Word-map: sized coloured bubbles (true word-cloud feel) ──
             max_count = max(v["count"] for v in region_data.values()) or 1
-            wc_html = '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;'
-            wc_html += 'justify-content:center;padding:10px 4px;">'
             sorted_regions = sorted(region_data.items(), key=lambda x: -x[1]["count"])
-            colors = ["#E30613","#1a4fad","#059669","#7c3aed","#0891b2","#b45309","#9333ea","#0d9488"]
+            colors = [
+                "#E30613","#1a4fad","#059669","#7c3aed",
+                "#0891b2","#b45309","#9333ea","#0d9488",
+                "#0369a1","#16a34a","#dc2626","#d97706",
+            ]
+            wc_html = (
+                '<div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;' +
+                'justify-content:center;padding:18px 8px;'  +
+                'background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;'
+                'min-height:180px;">'
+            )
             for idx,(region,val) in enumerate(sorted_regions):
-                ratio    = val["count"] / max_count
-                fs       = int(12 + ratio * 22)   # font 12–34px
-                pad_h    = int(6  + ratio * 10)
-                pad_v    = int(3  + ratio * 6)
-                opacity  = 0.75 + ratio * 0.25
-                col_hex  = colors[idx % len(colors)]
+                ratio   = val["count"] / max_count          # 0.0 – 1.0
+                fs      = int(13 + ratio * 26)              # 13 – 39 px
+                pad_h   = int(8  + ratio * 14)
+                pad_v   = int(4  + ratio * 8)
+                alpha   = int(18 + ratio * 20)              # hex opacity 18–38
+                col_hex = colors[idx % len(colors)]
+                bg_hex  = col_hex + hex(alpha)[2:].zfill(2) # colour + alpha
+                tooltip = f"{region}: {val['count']} idea(s) · ROI {round(val['roi'],1)}"
                 wc_html += (
-                    f'<span style="font-size:{fs}px;font-weight:700;color:{col_hex};'
-                    f'background:rgba(0,0,0,0.04);border-radius:6px;'
-                    f'padding:{pad_v}px {pad_h}px;opacity:{opacity:.2f};'
-                    f'cursor:default;line-height:1.4;" '
-                    f'title="{region}: {val['count']} ideas, ROI {round(val['roi'],1)}">'
-                    f'{region} <sup style="font-size:{max(8,fs-8)}px;">{val['count']}</sup></span>'
+                    f'<span title="{tooltip}" style="' +
+                    f'font-size:{fs}px;font-weight:{600 if ratio>0.5 else 500};' +
+                    f'color:{col_hex};background:{bg_hex};' +
+                    f'border-radius:8px;padding:{pad_v}px {pad_h}px;' +
+                    f'cursor:default;line-height:1.5;white-space:nowrap;'
+                    f'box-shadow:0 1px 3px rgba(0,0,0,.06);">' +
+                    f'{region}'
+                    f'<span style="font-size:{max(9,fs-10)}px;vertical-align:super;'
+                    f'margin-left:3px;opacity:0.7;">{val['count']}</span>'
+                    f'</span>'
                 )
             wc_html += '</div>'
             st.markdown(wc_html, unsafe_allow_html=True)
-            st.caption("Size = idea count · Hover for ROI detail")
+            if no_region_count:
+                st.caption(f"ℹ️ {no_region_count} idea(s) have no region assigned and are excluded.")
+            st.caption("Font size = idea count · Hover for count & ROI")
 
     # ── All Ideas table + CSV (above Kanban) ────────────────────────────
     st.markdown("##### 📄 All Ideas")
