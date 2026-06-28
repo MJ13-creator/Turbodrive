@@ -1,8 +1,3 @@
-"""
-Turbo Drive — Ideation & Automation Workflow Manager
-Streamlit version — Requirement 2 Updates Applied
-"""
-
 import os, json, uuid, re, csv, io
 from datetime import datetime, date, timedelta
 from urllib.parse import quote
@@ -30,7 +25,7 @@ def get_supabase() -> Client:
 STATUSES   = ["New Idea","Assigned","WIP","UAT","Completed","Hold/Park","Rejected"]
 PROJECTS   = ["EFS CA-MRO","EFS BA-MRO","EFS BA-LCE","EFS CA-LCE","EFS Controls","EFS Technical Response","Others"]
 CATEGORIES = ["Customer Requirement","Internal"]
-AUTO_CATS  = ["Automation-Process Existing Enhancement","Automation-Process Elimination","Automation-E2E","Automation-Quality Enhancement","AI-Personal Productivity","AI-Process Improvement","AI-Defined Product and Sales"]
+AUTO_CATS  = ["Automation-Personal Productivity","Automation-Process Improvement","Automation-Defined Product and Sales","Automation-Quality Enhancement","AI-Personal Productivity","AI-Process Improvement","AI-Defined Product and Sales"]
 FREQ_MULT  = {"Daily":260,"Weekly":52,"Monthly":12,"Yearly":1}
 REJ_REASONS= ["Technical Rejection","Business Rejection"]
 ROLES_LIST = ["super user","normal user","automation engineer","automation pl","pl/spl"]
@@ -62,9 +57,9 @@ PW_ROLES = {"super user","automation engineer","automation pl","pl/spl"}
 DEFAULT_USERS = [{"email":"ravi.manoharan@alten-india.com","role":"super user"}]
 
 AUTO_CAT_COLORS = {
-    "Automation-Process Existing Enhancement":"#1a4fad",
-    "Automation-Process Elimination":"#7c3aed",
-    "Automation-E2E":"#059669",
+    "Automation-Personal Productivity":"#1a4fad",
+    "Automation-Process Improvement":"#7c3aed",
+    "Automation-Defined Product and Sales":"#059669",
     "Automation-Quality Enhancement":"#0d9488",
     "AI-Personal Productivity":"#0369a1",
     "AI-Process Improvement":"#9333ea",
