@@ -14,23 +14,17 @@ from supabase import create_client, Client
 # ══════════════════════════════════════════════════════════════════════════════
 #  CONFIG / CONSTANTS
 # ══════════════════════════════════════════════════════════════════════════════
-# ── Supabase credentials ─────────────────────────────────────────────────────
-# Use the SERVICE ROLE key (not anon) — it bypasses RLS completely.
-# Supabase dashboard → Project Settings → API → service_role (secret) key.
-# Keep this file private / in a private GitHub repo.
-SUPABASE_URL = "https://mvoxhdbcxmmozulenlvh.supabase.co"   # ← paste your Project URL
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12b3hoZGJjeG1tb3p1bGVubHZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5MTczNDIsImV4cCI6MjA5NDQ5MzM0Mn0.6Fhrqo6sfMnO3KklN5dwLup0BVbp0_ga8k5hi3LgXQU"         # ← paste service_role key (not anon)
+SUPABASE_URL = "https://mvoxhdbcxmmozulenlvh.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12b3hoZGJjeG1tb3p1bGVubHZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5MTczNDIsImV4cCI6MjA5NDQ5MzM0Mn0.6Fhrqo6sfMnO3KklN5dwLup0BVbp0_ga8k5hi3LgXQU"
 
 @st.cache_resource
 def get_supabase() -> Client:
     try:
         sb = create_client(SUPABASE_URL, SUPABASE_KEY)
-        # Quick connectivity check — will raise if URL/key are wrong
         sb.table("users").select("email").limit(1).execute()
         return sb
     except Exception as e:
         st.error(f"❌ Supabase connection failed: {e}")
-        st.info("Check SUPABASE_URL and SUPABASE_KEY in the code (lines 18-19). Use the **service_role** key, not the anon key.")
         st.stop()
 
 STATUSES   = ["New Idea","Assigned","WIP","UAT","Completed","Hold/Park","Rejected"]
@@ -48,8 +42,7 @@ SUPPORT_EMAIL = "manoj.jagadeesh@alten-india.com"
 ALTEN_LOGO_URL = "https://www.alten.com/wp-content/uploads/2019/01/favicon-alten.png"
 
 CUSTOMERS = ["Rolls-Royce"]
-
-REGIONS = ["INDIA", "UK", "USA", "Germany"]
+REGIONS   = ["INDIA", "UK", "USA", "Germany"]
 
 BLOCKED_DOMAINS = {
     "gmail.com","yahoo.com","hotmail.com","rediff.com","outlook.com",
@@ -84,7 +77,6 @@ STATUS_COLORS = {
     "UAT":"#0ea5e9","Completed":"#059669","Hold/Park":"#b45309","Rejected":"#dc2626"
 }
 
-# Status icons for the planner board (Teams-style)
 STATUS_ICONS = {
     "New Idea":"💡","Assigned":"📋","WIP":"⚙️",
     "UAT":"🧪","Completed":"✅","Hold/Park":"⏸","Rejected":"❌"
@@ -98,53 +90,17 @@ THEMES = {
     "Midnight Dark":      {"primary":"#e2e8f0","secondary":"#94a3b8","bg":"#0f172a","sidebar":"#020617"},
 }
 
-# Ocean-blue background used on all non-dashboard pages
-PAGE_BG = "#e8f4fd"        # very light ocean blue tint
-PAGE_SURFACE = "#dbbdbd"   # card surface stays white
-
 # ══════════════════════════════════════════════════════════════════════════════
 #  DATABASE  (Supabase backend)
-#  Tables required in your Supabase project:
-#
-#  ideas  — columns: id(text pk), name, submitter_email, idea_name, idea,
-#            project, category, automation_category, pl_name, status,
-#            roi(float8), assigned_engineer, feasibility_data(text/json),
-#            feasibility_comments, decision, rejection_reason, approval_comment,
-#            priority_label, sprint_start, sprint_end, delivery_date,
-#            vsm_meeting_date, sprint_meeting_date, hold_reason,
-#            created_date, assigned_date, wip_date, uat_date, completion_date,
-#            customer, region
-#
-#  users  — columns: email(text pk), role(text), password_hash(text)
-#
-#  RLS:   For a private internal tool the simplest setup is to disable RLS on
-#         both tables in Supabase (Authentication → Policies → disable RLS),
-#         or add a policy "allow all" for the service-role key.
 # ══════════════════════════════════════════════════════════════════════════════
-
 def _run_sql(sb, sql):
-    """Execute raw SQL via Supabase pg_query RPC (used only for DDL migrations)."""
     try:
         sb.rpc("pg_query", {"query": sql}).execute()
     except Exception:
-        # pg_query RPC may not exist — fall back silently; table already exists
         pass
 
 def init_db():
-    """
-    Self-managing startup:
-    1. Creates tables if they do not exist.
-    2. Adds any missing columns (safe ALTER TABLE ADD COLUMN IF NOT EXISTS).
-    3. Seeds the default super-user.
-    All steps are idempotent — safe to call on every app startup.
-    """
     sb = get_supabase()
-
-    # ── Create tables via direct SQL using pg_query RPC ───────────────────
-    # Note: pg_query must be enabled as a Postgres function in your project.
-    # If it is not available, create the tables manually once using the
-    # Supabase SQL Editor (see README). The ALTER TABLE steps below handle
-    # adding any new columns automatically even without pg_query.
     _run_sql(sb, """
         CREATE TABLE IF NOT EXISTS users (
             email         text PRIMARY KEY,
@@ -187,42 +143,27 @@ def init_db():
             completion_date      text
         );
     """)
-
-    # ── Add missing columns (safe — IF NOT EXISTS) ────────────────────────
-    # This runs on every startup and is a no-op if the column already exists.
     idea_cols = [
-        ("submitter_email",      "text"),
-        ("automation_category",  "text"),
-        ("priority_label",       "text"),
-        ("sprint_start",         "text"),
-        ("sprint_end",           "text"),
-        ("delivery_date",        "text"),
-        ("vsm_meeting_date",     "text"),
-        ("sprint_meeting_date",  "text"),
-        ("hold_reason",          "text"),
-        ("customer",             "text"),
-        ("region",               "text"),
+        ("submitter_email","text"),("automation_category","text"),
+        ("priority_label","text"),("sprint_start","text"),("sprint_end","text"),
+        ("delivery_date","text"),("vsm_meeting_date","text"),
+        ("sprint_meeting_date","text"),("hold_reason","text"),
+        ("customer","text"),("region","text"),
     ]
     for col, dtype in idea_cols:
         _run_sql(sb, f"ALTER TABLE ideas ADD COLUMN IF NOT EXISTS {col} {dtype};")
-
     _run_sql(sb, "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash text;")
 
-    # ── Seed default super-user ───────────────────────────────────────────
     dh = generate_password_hash(DEFAULT_PW)
     for u in DEFAULT_USERS:
         try:
-            existing = sb.table("users").select("email,password_hash")                          .eq("email", u["email"].lower()).execute()
+            existing = sb.table("users").select("email,password_hash").eq("email", u["email"].lower()).execute()
             if not existing.data:
-                sb.table("users").insert({
-                    "email":         u["email"].lower(),
-                    "role":          u["role"],
-                    "password_hash": dh,
-                }).execute()
+                sb.table("users").insert({"email":u["email"].lower(),"role":u["role"],"password_hash":dh}).execute()
             elif not existing.data[0].get("password_hash"):
-                sb.table("users").update({"password_hash": dh})                   .eq("email", u["email"].lower()).execute()
+                sb.table("users").update({"password_hash":dh}).eq("email",u["email"].lower()).execute()
         except Exception:
-            pass  # Table may not exist yet if pg_query is unavailable
+            pass
 
 def get_all():
     sb   = get_supabase()
@@ -235,47 +176,29 @@ def get_all():
     return rows
 
 def add_idea(idea):
-    sb = get_supabase()
     row = {
-        "id":                  idea["id"],
-        "name":                idea.get("name",""),
-        "submitter_email":     idea.get("submitter_email",""),
-        "idea_name":           idea.get("idea_name",""),
-        "idea":                idea.get("idea",""),
-        "project":             idea.get("project",""),
-        "category":            idea.get("category",""),
-        "automation_category": idea.get("automation_category",""),
-        "pl_name":             idea.get("pl_name",""),
-        "status":              idea.get("status","New Idea"),
-        "roi":                 idea.get("roi", 0),
-        "assigned_engineer":   idea.get("assigned_engineer",""),
-        "feasibility_data":    json.dumps(idea.get("feasibility_data",{})),
-        "feasibility_comments":idea.get("feasibility_comments",""),
-        "decision":            idea.get("decision",""),
-        "rejection_reason":    idea.get("rejection_reason",""),
-        "approval_comment":    idea.get("approval_comment",""),
-        "priority_label":      idea.get("priority_label",""),
-        "sprint_start":        idea.get("sprint_start",""),
-        "sprint_end":          idea.get("sprint_end",""),
-        "delivery_date":       idea.get("delivery_date",""),
-        "vsm_meeting_date":    idea.get("vsm_meeting_date",""),
-        "sprint_meeting_date": idea.get("sprint_meeting_date",""),
-        "hold_reason":         idea.get("hold_reason",""),
-        "created_date":        datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "assigned_date":       "",
-        "wip_date":            "",
-        "uat_date":            "",
-        "completion_date":     "",
-        "customer":            idea.get("customer",""),
-        "region":              idea.get("region",""),
+        "id":idea["id"],"name":idea.get("name",""),"submitter_email":idea.get("submitter_email",""),
+        "idea_name":idea.get("idea_name",""),"idea":idea.get("idea",""),"project":idea.get("project",""),
+        "category":idea.get("category",""),"automation_category":idea.get("automation_category",""),
+        "pl_name":idea.get("pl_name",""),"status":idea.get("status","New Idea"),"roi":idea.get("roi",0),
+        "assigned_engineer":idea.get("assigned_engineer",""),
+        "feasibility_data":json.dumps(idea.get("feasibility_data",{})),
+        "feasibility_comments":idea.get("feasibility_comments",""),"decision":idea.get("decision",""),
+        "rejection_reason":idea.get("rejection_reason",""),"approval_comment":idea.get("approval_comment",""),
+        "priority_label":idea.get("priority_label",""),"sprint_start":idea.get("sprint_start",""),
+        "sprint_end":idea.get("sprint_end",""),"delivery_date":idea.get("delivery_date",""),
+        "vsm_meeting_date":idea.get("vsm_meeting_date",""),"sprint_meeting_date":idea.get("sprint_meeting_date",""),
+        "hold_reason":idea.get("hold_reason",""),"created_date":datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "assigned_date":"","wip_date":"","uat_date":"","completion_date":"",
+        "customer":idea.get("customer",""),"region":idea.get("region",""),
     }
     get_supabase().table("ideas").insert(row).execute()
 
 def update_idea(iid, fields):
     payload = {}
-    for k, v in fields.items():
-        payload[k] = json.dumps(v) if k == "feasibility_data" else v
-    get_supabase().table("ideas").update(payload).eq("id", iid).execute()
+    for k,v in fields.items():
+        payload[k] = json.dumps(v) if k=="feasibility_data" else v
+    get_supabase().table("ideas").update(payload).eq("id",iid).execute()
 
 def get_users():
     resp = get_supabase().table("users").select("*").order("email").execute()
@@ -284,25 +207,20 @@ def get_users():
 def add_user(email, role):
     sb  = get_supabase()
     dh  = generate_password_hash(DEFAULT_PW)
-    existing = sb.table("users").select("password_hash").eq("email", email.lower()).execute()
+    existing = sb.table("users").select("password_hash").eq("email",email.lower()).execute()
     if existing.data:
-        # keep existing password_hash; only update role
-        sb.table("users").update({"role": role}).eq("email", email.lower()).execute()
+        sb.table("users").update({"role":role}).eq("email",email.lower()).execute()
     else:
-        sb.table("users").insert({
-            "email": email.lower(), "role": role, "password_hash": dh
-        }).execute()
+        sb.table("users").insert({"email":email.lower(),"role":role,"password_hash":dh}).execute()
 
 def delete_user(email):
-    get_supabase().table("users").delete().eq("email", email.lower()).execute()
+    get_supabase().table("users").delete().eq("email",email.lower()).execute()
 
 def update_role(email, role):
-    get_supabase().table("users").update({"role": role}).eq("email", email.lower()).execute()
+    get_supabase().table("users").update({"role":role}).eq("email",email.lower()).execute()
 
 def set_password(email, new_pw):
-    get_supabase().table("users").update(
-        {"password_hash": generate_password_hash(new_pw)}
-    ).eq("email", email.lower()).execute()
+    get_supabase().table("users").update({"password_hash":generate_password_hash(new_pw)}).eq("email",email.lower()).execute()
 
 def reset_password(email):
     set_password(email, DEFAULT_PW)
@@ -400,8 +318,7 @@ Priority    : {queue_info.get('priority_label','') if queue_info else ''}"""
     if queue_info:
         body += f"\nSprint Start: {fmt_d(queue_info['sprint_start'])}\nDelivery    : {fmt_d(queue_info['sprint_end'])}"
     body += "\n\nPlease begin Feasibility Study and update status in Turbo Drive."
-    return outlook_link([eng],
-        f"[Turbo Drive] New Idea Assigned: {idea.get('idea_name','')}", body)
+    return outlook_link([eng], f"[Turbo Drive] New Idea Assigned: {idea.get('idea_name','')}", body)
 
 def build_feasibility_outlook(idea, roi, vsm_date, queue_info):
     body = f"""Feasibility Study is complete — please review and provide GO / NO-GO decision.
@@ -416,8 +333,7 @@ VSM Date    : {fmt_d(vsm_date)} at 11:00 AM"""
     if queue_info:
         body += f"\nDelivery    : {fmt_d(queue_info['sprint_end'])}"
     body += "\n\nPlease log in to Turbo Drive to approve or reject."
-    return outlook_link([idea.get("pl_name","")],
-        f"[Turbo Drive] Feasibility Complete — Action Needed: {idea.get('idea_name','')}", body)
+    return outlook_link([idea.get("pl_name","")], f"[Turbo Drive] Feasibility Complete — Action Needed: {idea.get('idea_name','')}", body)
 
 def build_meeting_outlook(mtype, idea, mdate, recipients):
     times  = {"vsm":"11:00 AM","sprint":"10:00 AM","delivery":"03:00 PM"}
@@ -435,8 +351,7 @@ Category    : {idea.get('category','')}
 Date        : {fmt_d(mdate)} at {times.get(mtype,'')}
 Engineer    : {idea.get('assigned_engineer','-')}
 PL / SPL    : {idea.get('pl_name','-')}"""
-    return outlook_link(recipients,
-        f"[Turbo Drive] {titles.get(mtype,'Meeting')}: {idea.get('idea_name','')} — {fmt_d(mdate)}", body)
+    return outlook_link(recipients, f"[Turbo Drive] {titles.get(mtype,'Meeting')}: {idea.get('idea_name','')} — {fmt_d(mdate)}", body)
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  SHARED UI COMPONENTS
@@ -472,22 +387,8 @@ def page_header(title: str):
     </div>""", unsafe_allow_html=True)
     render_support_bar()
 
-def inject_page_bg():
-    """Inject ocean-blue background for non-dashboard pages."""
-    st.markdown(f"""
-    <style>
-    html,body,[data-testid="stApp"] {{
-        background: {PAGE_BG} !important;
-    }}
-    div[data-testid="stForm"],
-    .element-container .stExpander {{
-        background: {PAGE_SURFACE} !important;
-        border-radius: 12px;
-    }}
-    </style>""", unsafe_allow_html=True)
-
 # ══════════════════════════════════════════════════════════════════════════════
-#  THEME / CSS INJECTION
+#  THEME / CSS INJECTION  (no forced page-bg override on any page)
 # ══════════════════════════════════════════════════════════════════════════════
 def apply_theme(theme_name):
     t = THEMES.get(theme_name, THEMES["ALTEN Red & Blue"])
@@ -501,132 +402,55 @@ def apply_theme(theme_name):
         font-family:'Inter',sans-serif;
         background:{t['bg']} !important;
         color:{text_color};
+        font-size:clamp(12px,1.1vw,15px);
     }}
-    [data-testid="stSidebar"]{{
-        background:{t['sidebar']} !important;
-    }}
+    [data-testid="stSidebar"]{{background:{t['sidebar']} !important;}}
     [data-testid="stSidebar"] *{{color:#e2e8f0 !important;}}
     [data-testid="stSidebar"] .stRadio label{{
-        font-size:14px;padding:6px 10px;border-radius:8px;
+        font-size:clamp(11px,1vw,14px);padding:6px 10px;border-radius:8px;
         transition:background .15s;cursor:pointer;
     }}
     [data-testid="stSidebar"] .stRadio label:hover{{background:rgba(255,255,255,.1);}}
     h1{{
         background:linear-gradient(135deg,{t['primary']},{t['secondary']});
         -webkit-background-clip:text;background-clip:text;color:transparent;
-        font-size:28px;font-weight:800;margin-bottom:4px;
+        font-size:clamp(20px,2vw,28px);font-weight:800;margin-bottom:4px;
     }}
-    h2{{color:{t['primary']};font-size:20px;font-weight:700;}}
-    h3{{color:{t['secondary']};font-size:16px;font-weight:600;}}
+    h2{{color:{t['primary']};font-size:clamp(15px,1.5vw,20px);font-weight:700;}}
+    h3{{color:{t['secondary']};font-size:clamp(13px,1.2vw,16px);font-weight:600;}}
     .kpi-card{{
         background:{surface};border-radius:14px;padding:14px 16px;
         border-left:5px solid {t['primary']};
-        box-shadow:0 2px 12px rgba(0,0,0,.08);
-        margin-bottom:6px;
+        box-shadow:0 2px 12px rgba(0,0,0,.08);margin-bottom:6px;
     }}
-    .kpi-val{{font-size:22px;font-weight:800;}}
-    .kpi-lbl{{font-size:11px;color:#64748b;font-weight:500;margin-top:2px;}}
-    .kpi-sub{{font-size:10px;color:#94a3b8;margin-top:3px;}}
+    .kpi-val{{font-size:clamp(16px,1.6vw,22px);font-weight:800;}}
+    .kpi-lbl{{font-size:clamp(9px,0.85vw,11px);color:#64748b;font-weight:500;margin-top:2px;}}
+    .kpi-sub{{font-size:clamp(8px,0.75vw,10px);color:#94a3b8;margin-top:3px;}}
     .idea-card{{
         background:{surface};border-radius:12px;padding:14px 16px;
-        border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.06);
-        margin-bottom:10px;
+        border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.06);margin-bottom:10px;
     }}
-    /* ── MS Teams / Planner-style Kanban ── */
-    .teams-board {{
-        display: flex;
-        flex-direction: row;
-        gap: 12px;
-        overflow-x: auto;
-        padding: 4px 0 12px 0;
-        align-items: flex-start;
-    }}
-    .teams-col {{
-        flex: 0 0 190px;
-        min-width: 190px;
-        background: #f0f6ff;
-        border-radius: 10px;
-        overflow: hidden;
-        box-shadow: 0 2px 8px rgba(0,0,0,.07);
-    }}
-    .teams-col-header {{
-        padding: 10px 12px 8px;
-        font-size: 12px;
-        font-weight: 700;
-        color: #fff;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        letter-spacing: 0.3px;
-    }}
-    .teams-col-body {{
-        padding: 8px;
-        min-height: 60px;
-    }}
-    .teams-card {{
-        background: #ffffff;
-        border-radius: 8px;
-        padding: 9px 11px;
-        margin-bottom: 7px;
-        border-left: 4px solid transparent;
-        box-shadow: 0 1px 4px rgba(0,0,0,.07);
-        transition: box-shadow .15s;
-    }}
-    .teams-card:hover {{ box-shadow: 0 3px 10px rgba(0,0,0,.12); }}
-    .teams-card-title {{
-        font-size: 12px;
-        font-weight: 600;
-        color: #1e293b;
-        margin-bottom: 5px;
-        line-height: 1.3;
-    }}
-    .teams-card-meta {{
-        font-size: 10px;
-        color: #64748b;
-        line-height: 1.6;
-    }}
-    .teams-card-tag {{
-        display: inline-block;
-        font-size: 9px;
-        font-weight: 600;
-        padding: 2px 6px;
-        border-radius: 10px;
-        margin-top: 4px;
-        color: #fff;
-    }}
-    .teams-empty {{
-        font-size: 10px;
-        color: #94a3b8;
-        text-align: center;
-        padding: 14px 6px;
-        font-style: italic;
-    }}
-    .teams-badge {{
-        background: rgba(255,255,255,0.25);
-        border-radius: 10px;
-        padding: 2px 7px;
-        font-size: 11px;
-        font-weight: 700;
-    }}
-    /* ─────────────────────────────────── */
     .outlook-btn{{
         display:inline-block;background:{t['primary']};color:#fff;
         padding:8px 18px;border-radius:8px;text-decoration:none;
-        font-weight:600;font-size:13px;margin-top:8px;
+        font-weight:600;font-size:clamp(11px,1vw,13px);margin-top:8px;
     }}
     .stButton>button{{
         background:linear-gradient(135deg,{t['primary']},{t['secondary']});
-        color:#fff;border:none;border-radius:8px;
-        font-weight:600;padding:8px 20px;
+        color:#fff;border:none;border-radius:8px;font-weight:600;padding:8px 20px;
     }}
     .stButton>button:hover{{opacity:.88;}}
     div[data-testid="stForm"]{{background:{surface};border-radius:12px;padding:12px;}}
     .login-box{{
-        max-width:440px;margin:40px auto;
-        background:{surface};border-radius:16px;
-        padding:32px 36px;
-        box-shadow:0 8px 32px rgba(0,0,0,.12);
+        max-width:440px;margin:40px auto;background:{surface};border-radius:16px;
+        padding:32px 36px;box-shadow:0 8px 32px rgba(0,0,0,.12);
         border:1px solid rgba(255,255,255,.08);
+    }}
+    /* filter bar */
+    .filter-bar{{
+        background:{surface};border-radius:10px;padding:10px 14px;
+        border:1px solid #e2e8f0;margin-bottom:10px;
+        box-shadow:0 1px 4px rgba(0,0,0,.05);
     }}
     </style>""", unsafe_allow_html=True)
 
@@ -647,7 +471,7 @@ def is_org_email(email: str) -> bool:
     return domain not in BLOCKED_DOMAINS
 
 def check_login(email, password):
-    resp = get_supabase().table("users").select("*").eq("email", email.lower()).execute()
+    resp = get_supabase().table("users").select("*").eq("email",email.lower()).execute()
     if not resp.data: return None, "Email not found in system."
     row  = resp.data[0]
     role = row.get("role","")
@@ -663,13 +487,13 @@ def check_login(email, password):
 def idea_hours(i):
     fd = i.get("feasibility_data",{}) or {}
     try:
-        return float(fd.get("manual",0) or 0) * float(fd.get("fte",0) or 0) * FREQ_MULT.get(fd.get("freq","Daily"),1)
+        return float(fd.get("manual",0) or 0)*float(fd.get("fte",0) or 0)*FREQ_MULT.get(fd.get("freq","Daily"),1)
     except: return 0
 
 def kpi_card(value, label, color, sub="", icon=""):
     st.markdown(f"""
     <div class="kpi-card" style="border-left-color:{color}">
-      <div style="font-size:18px;margin-bottom:2px;">{icon}</div>
+      <div style="font-size:clamp(14px,1.4vw,18px);margin-bottom:2px;">{icon}</div>
       <div class="kpi-val" style="color:{color}">{value}</div>
       <div class="kpi-lbl">{label}</div>
       {"<div class='kpi-sub'>"+sub+"</div>" if sub else ""}
@@ -685,94 +509,66 @@ def cnt_cat_wip(ideas, cat):
 #  KANBAN: NATIVE STREAMLIT COLUMN + EXPANDER BOARD
 # ══════════════════════════════════════════════════════════════════════════════
 def render_kanban_board(ideas):
-    """
-    Native Streamlit Kanban board — one st.column per status, expander per
-    card, inline selectbox + Update button inside each card (no HTML render).
-    """
-    t = THEMES.get(ss("theme", "ALTEN Red & Blue"), THEMES["ALTEN Red & Blue"])
-
-    # ── Column headers with coloured badges ───────────────────────────────
     cols = st.columns(len(STATUSES))
     for col, status in zip(cols, STATUSES):
-        color = STATUS_COLORS.get(status, "#888")
-        icon  = STATUS_ICONS.get(status, "")
-        count = len([i for i in ideas if i.get("status") == status])
+        color = STATUS_COLORS.get(status,"#888")
+        icon  = STATUS_ICONS.get(status,"")
+        count = len([i for i in ideas if i.get("status")==status])
         col.markdown(
             f'<div style="background:{color};color:#fff;border-radius:8px;'
-            f'padding:6px 10px;text-align:center;font-size:12px;font-weight:700;'
+            f'padding:6px 10px;text-align:center;font-size:clamp(10px,0.9vw,12px);font-weight:700;'
             f'margin-bottom:6px;">{icon} {status} &nbsp;'
             f'<span style="background:rgba(255,255,255,0.25);border-radius:10px;'
             f'padding:1px 7px;">{count}</span></div>',
             unsafe_allow_html=True,
         )
 
-    # ── Card rows ─────────────────────────────────────────────────────────
     cols = st.columns(len(STATUSES))
     for col, status in zip(cols, STATUSES):
-        color  = STATUS_COLORS.get(status, "#888")
-        bucket = [i for i in ideas if i.get("status") == status]
-
+        color  = STATUS_COLORS.get(status,"#888")
+        bucket = [i for i in ideas if i.get("status")==status]
         with col:
             if not bucket:
                 st.caption("_Empty_")
-
             for idea in bucket:
-                eng       = idea.get("assigned_engineer", "")
-            
-                proj      = idea.get("project", "-")
-                name      = idea.get("name","-")
-                cat       = idea.get("category", "")
-                delivery  = idea.get("delivery_date", "")
-                hold      = idea.get("hold_reason", "")
-
-                label = idea.get("idea_name", "No Name")[:28]
-
+                eng      = idea.get("assigned_engineer","")
+                proj     = idea.get("project","-")
+                delivery = idea.get("delivery_date","")
+                hold     = idea.get("hold_reason","")
+                label    = idea.get("idea_name","No Name")[:28]
                 with st.expander(label, expanded=False):
                     st.markdown(
                         f'<div style="border-left:3px solid {color};padding-left:8px;margin-bottom:6px;">'
-                        f'<span style="font-size:11px;color:#64748b;">📌 {proj}</span><br>'
-                        f'<span style="font-size:11px;color:#64748b;">👤 {idea.get("name","-")}</span><br>'
-                        f'<span style="font-size:11px;color:#64748b;">👷 {name}</span>'
-                        + (f'<br><span style="font-size:10px;color:#0369a1;">📅 {delivery}</span>' if delivery else "")
-                        + (f'<br><span style="font-size:10px;color:#b45309;">⏸ {hold[:30]}</span>' if hold else "")
-                        + f'</div>',
-                        unsafe_allow_html=True,
+                        f'<span style="font-size:clamp(9px,0.85vw,11px);color:#64748b;">📌 {proj}</span><br>'
+                        f'<span style="font-size:clamp(9px,0.85vw,11px);color:#64748b;">👤 {idea.get("name","-")}</span><br>'
+                        f'<span style="font-size:clamp(9px,0.85vw,11px);color:#64748b;">👷 {eng.split("@")[0] if "@" in eng else eng or "—"}</span>'
+                        +(f'<br><span style="font-size:clamp(8px,0.75vw,10px);color:#0369a1;">📅 {delivery}</span>' if delivery else "")
+                        +(f'<br><span style="font-size:clamp(8px,0.75vw,10px);color:#b45309;">⏸ {hold[:30]}</span>' if hold else "")
+                        +f'</div>', unsafe_allow_html=True,
                     )
-
-                    new_status = st.selectbox(
-                        "Move to",
-                        STATUSES,
-                        index=STATUSES.index(status),
-                        key=f"kanban_sel_{idea['id']}",
-                        label_visibility="collapsed",
-                    )
-
+                    new_status = st.selectbox("Move to", STATUSES,
+                                              index=STATUSES.index(status),
+                                              key=f"kanban_sel_{idea['id']}",
+                                              label_visibility="collapsed")
                     hold_input = ""
                     if new_status == "Hold/Park":
-                        hold_input = st.text_input(
-                            "Reason *",
-                            key=f"kanban_hold_{idea['id']}",
-                            placeholder="Hold reason…",
-                        )
-
+                        hold_input = st.text_input("Reason *", key=f"kanban_hold_{idea['id']}", placeholder="Hold reason…")
                     if st.button("Update", key=f"kanban_btn_{idea['id']}", use_container_width=True):
-                        if new_status == "Hold/Park" and not hold_input:
+                        if new_status=="Hold/Park" and not hold_input:
                             st.error("Enter a hold reason.")
                         else:
-                            upd = {"status": new_status}
-                            if new_status == "Completed":
+                            upd = {"status":new_status}
+                            if new_status=="Completed":
                                 upd["completion_date"] = datetime.now().strftime("%Y-%m-%d %H:%M")
-                            upd["hold_reason"] = hold_input if new_status == "Hold/Park" else ""
+                            upd["hold_reason"] = hold_input if new_status=="Hold/Park" else ""
                             update_idea(idea["id"], upd)
                             st.rerun()
-
                     st.divider()
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  PAGE: LOGIN
 # ══════════════════════════════════════════════════════════════════════════════
 def page_login():
-    inject_page_bg()
     t = THEMES.get(ss("theme","ALTEN Red & Blue"), THEMES["ALTEN Red & Blue"])
     dark_bg = ss("theme","") == "Midnight Dark"
     surface = "#2a61b8" if dark_bg else "#CACDE3"
@@ -785,12 +581,12 @@ def page_login():
              margin-top:20px;">
           <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px;">
             <img src="{ALTEN_LOGO_URL}" style="height:50px;object-fit:contain;" alt="ALTEN"/>
-            <span style="font-size:26px;font-weight:900;
+            <span style="font-size:clamp(20px,2vw,26px);font-weight:900;
                  background:linear-gradient(135deg,{t['primary']},{t['secondary']});
                  -webkit-background-clip:text;background-clip:text;color:transparent;
                  letter-spacing:1px;"> TURBO DRIVE</span>
           </div>
-          <div style="text-align:center;color:#64748b;font-size:13px;margin-bottom:2px;">
+          <div style="text-align:center;color:#64748b;font-size:clamp(11px,1vw,13px);margin-bottom:2px;">
             Ideation &amp; Automation Workflow Manager
           </div>
         </div>""", unsafe_allow_html=True)
@@ -817,7 +613,6 @@ def page_login():
                         st.rerun()
 
         col1, col2, col3 = st.columns(3)
-        
         with col2:
             if st.button("🔑 Change Password"):
                 st.session_state["_page_override"] = "change_password"; st.rerun()
@@ -826,7 +621,7 @@ def page_login():
                 st.session_state["_page_override"] = "register"; st.rerun()
 
         st.markdown(
-            f'<p style="font-size:10px;text-align:center;color:#94a3b8;margin-top:6px;">'
+            f'<p style="font-size:clamp(9px,0.8vw,10px);text-align:center;color:#94a3b8;margin-top:6px;">'
             f'For queries: <a href="mailto:{SUPPORT_EMAIL}" style="color:#00AEEF;">'
             f'{SUPPORT_NAME} — {SUPPORT_EMAIL}</a></p>',
             unsafe_allow_html=True
@@ -837,7 +632,6 @@ def page_login():
 #  PAGE: REGISTER
 # ══════════════════════════════════════════════════════════════════════════════
 def page_register():
-    inject_page_bg()
     page_header("Create Account")
     st.caption("Only **organisational email addresses** are accepted (free providers like Gmail, Yahoo, Hotmail, Rediff are not allowed). Self-registered users get **Submit Idea** access; an Admin can upgrade your role.")
     with st.form("reg_form"):
@@ -855,14 +649,12 @@ def page_register():
             elif len(pw) < 4:
                 st.error("Password must be at least 4 characters.")
             else:
-                resp = get_supabase().table("users").select("email").eq("email", email.lower()).execute()
+                resp = get_supabase().table("users").select("email").eq("email",email.lower()).execute()
                 if resp.data:
                     st.error("This email is already registered — please log in.")
                 else:
                     get_supabase().table("users").insert({
-                        "email": email.lower(),
-                        "role":  "normal user",
-                        "password_hash": generate_password_hash(pw)
+                        "email":email.lower(),"role":"normal user","password_hash":generate_password_hash(pw)
                     }).execute()
                     st.success("✅ Registered! You can now log in.")
     if st.button("← Back to Login"):
@@ -873,7 +665,6 @@ def page_register():
 #  PAGE: CHANGE PASSWORD
 # ══════════════════════════════════════════════════════════════════════════════
 def page_change_password():
-    inject_page_bg()
     page_header("Change Password")
     prefill = ss("email","")
     with st.form("cpw_form"):
@@ -889,7 +680,7 @@ def page_change_password():
             elif len(new_pw) < 4:
                 st.error("Minimum 4 characters.")
             else:
-                resp = get_supabase().table("users").select("*").eq("email", email.lower()).execute()
+                resp = get_supabase().table("users").select("*").eq("email",email.lower()).execute()
                 if not resp.data:
                     st.error("Email not found.")
                 elif not check_password_hash(resp.data[0].get("password_hash") or "", cur_pw):
@@ -905,7 +696,6 @@ def page_change_password():
 #  PAGE: SUBMIT IDEA
 # ══════════════════════════════════════════════════════════════════════════════
 def page_submit():
-    inject_page_bg()
     page_header("Submit New Idea 💡")
     users     = get_users()
     pl_emails = [u["email"] for u in users if u["role"] in ("pl/spl","automation pl","super user")]
@@ -932,85 +722,113 @@ def page_submit():
                           "category":category,"pl_name":pl_name,"status":"New Idea",
                           "customer":customer,"region":region})
                 st.success("✅ Idea Submitted Successfully")
-                pass  # no local cache to clear
     render_copyright()
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  PAGE: PL ASSIGNMENT
+#  PAGE: PL ASSIGNMENT  (+ engineer load bar chart top-right)
 # ══════════════════════════════════════════════════════════════════════════════
 def page_pl_assignment():
-    inject_page_bg()
     page_header("PL Assignment 🧑‍💼")
-    st.caption("⭐ Auto-priority: **Customer Requirement → ROI (high first) → FIFO**")
+
     all_ideas = get_all()
     users     = get_users()
     engineers = [u["email"] for u in users if u["role"]=="automation engineer"]
-    new_ideas = rank_ideas([i for i in all_ideas if i.get("status")=="New Idea"])
 
-    if not new_ideas:
-        st.info("No new ideas pending assignment.")
-        render_copyright(); return
+    # ── Engineer load bar chart — top right ──────────────────────────────
+    left_col, right_col = st.columns([2, 1])
 
-    if ss("_assign_outlook_url"):
-        url = ss("_assign_outlook_url"); lbl = ss("_assign_outlook_label","")
-        st.markdown(f"""
-        <div class="idea-card" style="border-left:4px solid #0ea5e9;">
-          📤 <b>Send assignment notification via Outlook:</b><br>
-          <span style="color:#64748b;font-size:12px;">{lbl}</span><br>
-          <a href="{url}" target="_blank" class="outlook-btn">📤 Open in Outlook</a>
-        </div>""", unsafe_allow_html=True)
-        st.session_state.pop("_assign_outlook_url",None)
-        st.session_state.pop("_assign_outlook_label",None)
+    with right_col:
+        st.markdown("<span style='font-size:13px;font-weight:600;'>📊 Engineer Task Load</span>", unsafe_allow_html=True)
+        if engineers:
+            eng_counts = {}
+            for eng in engineers:
+                eng_counts[eng.split("@")[0]] = len([
+                    i for i in all_ideas
+                    if i.get("assigned_engineer")==eng
+                    and i.get("status") in {"Assigned","WIP","UAT","Hold/Park"}
+                ])
+            st_echarts({
+                "tooltip": {"trigger":"axis"},
+                "grid": {"left":"4%","right":"4%","bottom":"30%","top":"8%","containLabel":True},
+                "xAxis": {
+                    "type":"category",
+                    "data": list(eng_counts.keys()),
+                    "axisLabel":{"rotate":35,"fontSize":9,"interval":0},
+                },
+                "yAxis": {"type":"value","name":"Active Tasks","nameTextStyle":{"fontSize":9},"minInterval":1},
+                "series":[{
+                    "type":"bar","data":list(eng_counts.values()),
+                    "itemStyle":{"color":"#1a4fad"},
+                    "barMaxWidth":32,
+                    "label":{"show":True,"position":"top","fontSize":9},
+                }]
+            }, height="220px")
+        else:
+            st.info("No automation engineers configured.")
 
-    for idea in new_ideas:
-        with st.expander(f"💡 {idea.get('idea_name','(no name)')}  —  {idea.get('priority_label','')}"):
-            col1,col2 = st.columns(2)
-            with col1:
-                st.markdown(f"**Submitted by:** {idea.get('name','-')}")
-                st.markdown(f"**Project:** {idea.get('project','-')} | **Category:** {idea.get('category','-')}")
-                st.markdown(f"**Customer:** {idea.get('customer','-')} | **Region:** {idea.get('region','-')}")
-                st.markdown(f"**Description:** {idea.get('idea','-')}")
-            with col2:
-                st.markdown(f"**PL/SPL:** {idea.get('pl_name','-')}")
-                st.markdown(f"**Submitted:** {idea.get('created_date','-')[:10]}")
+    with left_col:
+        st.caption("⭐ Auto-priority: **Customer Requirement → ROI (high first) → FIFO**")
+        new_ideas = rank_ideas([i for i in all_ideas if i.get("status")=="New Idea"])
 
-            if not engineers:
-                st.warning("No automation engineers in the system — add them in Admin first.")
-                continue
+        if not new_ideas:
+            st.info("No new ideas pending assignment.")
+        else:
+            if ss("_assign_outlook_url"):
+                url = ss("_assign_outlook_url"); lbl = ss("_assign_outlook_label","")
+                st.markdown(f"""
+                <div class="idea-card" style="border-left:4px solid #0ea5e9;">
+                  📤 <b>Send assignment notification via Outlook:</b><br>
+                  <span style="color:#64748b;font-size:12px;">{lbl}</span><br>
+                  <a href="{url}" target="_blank" class="outlook-btn">📤 Open in Outlook</a>
+                </div>""", unsafe_allow_html=True)
+                st.session_state.pop("_assign_outlook_url",None)
+                st.session_state.pop("_assign_outlook_label",None)
 
-            with st.form(f"assign_{idea['id']}"):
-                eng = st.selectbox("Assign Engineer", engineers, key=f"eng_{idea['id']}")
-                if st.form_submit_button("✅ Assign"):
-                    qi = compute_delivery(all_ideas, eng, idea)
-                    update_idea(idea["id"],{
-                        "assigned_engineer":eng,"status":"Assigned",
-                        "assigned_date":datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        "priority_label":qi["priority_label"] if qi else "",
-                        "sprint_start":fmt_d(qi["sprint_start"]) if qi else "",
-                        "sprint_end":fmt_d(qi["sprint_end"]) if qi else "",
-                        "delivery_date":fmt_d(qi["sprint_end"]) if qi else "",
-                    })
-                    fresh = next((i for i in get_all() if i["id"]==idea["id"]),idea)
-                    url = build_assign_outlook(fresh, eng, qi)
-                    st.session_state["_assign_outlook_url"]   = url
-                    st.session_state["_assign_outlook_label"] = f"Notify {eng} — {idea.get('idea_name','')}"
-                    st.success(f"Assigned to {eng}. Click 📤 Open in Outlook above to notify them.")
-                    st.rerun()
+            for idea in new_ideas:
+                with st.expander(f"💡 {idea.get('idea_name','(no name)')}  —  {idea.get('priority_label','')}"):
+                    c1,c2 = st.columns(2)
+                    with c1:
+                        st.markdown(f"**Submitted by:** {idea.get('name','-')}")
+                        st.markdown(f"**Project:** {idea.get('project','-')} | **Category:** {idea.get('category','-')}")
+                        st.markdown(f"**Customer:** {idea.get('customer','-')} | **Region:** {idea.get('region','-')}")
+                        st.markdown(f"**Description:** {idea.get('idea','-')}")
+                    with c2:
+                        st.markdown(f"**PL/SPL:** {idea.get('pl_name','-')}")
+                        st.markdown(f"**Submitted:** {idea.get('created_date','-')[:10]}")
+
+                    if not engineers:
+                        st.warning("No automation engineers in the system — add them in Admin first.")
+                        continue
+
+                    with st.form(f"assign_{idea['id']}"):
+                        eng = st.selectbox("Assign Engineer", engineers, key=f"eng_{idea['id']}")
+                        if st.form_submit_button("✅ Assign"):
+                            qi = compute_delivery(all_ideas, eng, idea)
+                            update_idea(idea["id"],{
+                                "assigned_engineer":eng,"status":"Assigned",
+                                "assigned_date":datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                "priority_label":qi["priority_label"] if qi else "",
+                                "sprint_start":fmt_d(qi["sprint_start"]) if qi else "",
+                                "sprint_end":fmt_d(qi["sprint_end"]) if qi else "",
+                                "delivery_date":fmt_d(qi["sprint_end"]) if qi else "",
+                            })
+                            fresh = next((i for i in get_all() if i["id"]==idea["id"]),idea)
+                            url = build_assign_outlook(fresh, eng, qi)
+                            st.session_state["_assign_outlook_url"]   = url
+                            st.session_state["_assign_outlook_label"] = f"Notify {eng} — {idea.get('idea_name','')}"
+                            st.success(f"Assigned to {eng}. Click 📤 Open in Outlook above to notify them.")
+                            st.rerun()
 
     # ── Engineer Workload & Sprint Schedule ───────────────────────────────
     st.divider()
     st.markdown("#### 📅 Engineer Workload & Sprint Schedule")
     st.caption("Active tasks per engineer ordered by auto-priority (Customer → ROI → FIFO), with rolling 2-week sprint dates.")
-    all_eng = [u["email"] for u in users if u["role"] == "automation engineer"]
+    all_eng = [u["email"] for u in users if u["role"]=="automation engineer"]
     if not all_eng:
         st.info("No automation engineers configured — add them in Admin.")
     else:
-        sel_engs = st.multiselect(
-            "Select Engineer(s) to view",
-            all_eng,
-            default=None,
-            placeholder="Choose one or more engineers…",
-        )
+        sel_engs = st.multiselect("Select Engineer(s) to view", all_eng,
+                                  default=None, placeholder="Choose one or more engineers…")
         import pandas as pd
         for eng in (sel_engs or []):
             queue = engineer_queue(all_ideas, eng)
@@ -1019,12 +837,9 @@ def page_pl_assignment():
                     st.caption("No active tasks — fully available.")
                 else:
                     df = pd.DataFrame([{
-                        "Queue #":              i["priority_rank"],
-                        "Idea":                 i.get("idea_name",""),
-                        "Category":             i.get("category",""),
-                        "Priority":             i.get("priority_label",""),
-                        "Sprint Start":         fmt_d(i["sprint_start"]),
-                        "Delivery (Sprint End)":fmt_d(i["sprint_end"]),
+                        "Queue #":i["priority_rank"],"Idea":i.get("idea_name",""),
+                        "Category":i.get("category",""),"Priority":i.get("priority_label",""),
+                        "Sprint Start":fmt_d(i["sprint_start"]),"Delivery (Sprint End)":fmt_d(i["sprint_end"]),
                     } for i in queue])
                     st.dataframe(df, use_container_width=True, hide_index=True)
 
@@ -1034,7 +849,6 @@ def page_pl_assignment():
 #  PAGE: FEASIBILITY STUDY
 # ══════════════════════════════════════════════════════════════════════════════
 def page_feasibility():
-    inject_page_bg()
     page_header("Feasibility Study 🔍")
     all_ideas = get_all()
     assigned  = rank_ideas([i for i in all_ideas if i.get("status")=="Assigned"])
@@ -1057,8 +871,7 @@ def page_feasibility():
     for idea in assigned:
         with st.expander(f"💡 {idea.get('idea_name','(no name)')}  —  {idea.get('priority_label','')}"):
             st.markdown(f"**Engineer:** {idea.get('assigned_engineer','-')}  |  "
-                        f"**PL/SPL:** {idea.get('pl_name','-')}  |  "
-                        f"**Category:** {idea.get('category','-')}")
+                        f"**PL/SPL:** {idea.get('pl_name','-')}  |  **Category:** {idea.get('category','-')}")
             if idea.get("delivery_date"):
                 st.caption(f"📅 Provisional delivery: {idea['delivery_date']}")
 
@@ -1068,17 +881,14 @@ def page_feasibility():
                 with col1: manual = st.number_input("Manual Effort (hrs)", min_value=0.0, step=0.5, key=f"m_{idea['id']}")
                 with col2: fte    = st.number_input("FTE Count", min_value=0.0, step=0.1, key=f"f_{idea['id']}")
                 with col3: eng_ef = st.number_input("Automation Effort (hrs)", min_value=0.01, step=0.5, value=1.0, key=f"e_{idea['id']}")
-
                 col4,col5 = st.columns(2)
                 with col4: freq     = st.selectbox("Frequency", list(FREQ_MULT.keys()), key=f"fr_{idea['id']}")
                 with col5: auto_cat = st.selectbox("Automation Category *", AUTO_CATS, key=f"ac_{idea['id']}")
                 comments = st.text_area("Comments / Observations", key=f"co_{idea['id']}")
-
-                roi = round((manual * fte * FREQ_MULT[freq]) / eng_ef, 2)
+                roi = round((manual*fte*FREQ_MULT[freq])/eng_ef, 2)
                 st.info(f"📈 Computed ROI: **{roi}**")
-
                 if st.form_submit_button("✅ Submit Feasibility & Notify PL via Outlook"):
-                    vsm_date = next_workday(date.today() + timedelta(days=1))
+                    vsm_date = next_workday(date.today()+timedelta(days=1))
                     qi = compute_delivery(all_ideas, idea.get("assigned_engineer",""), {**idea,"roi":roi})
                     update_idea(idea["id"],{
                         "status":"WIP","roi":roi,"automation_category":auto_cat,
@@ -1104,13 +914,11 @@ def page_feasibility():
 #  PAGE: APPROVAL
 # ══════════════════════════════════════════════════════════════════════════════
 def page_approval():
-    inject_page_bg()
     page_header("PL/SPL Approval ✅")
     all_ideas = get_all()
     my_email  = ss("email","")
     wip_ideas = rank_ideas([i for i in all_ideas
                             if i.get("status")=="WIP" and i.get("pl_name","").lower()==my_email.lower()])
-
     if not wip_ideas:
         other = rank_ideas([i for i in all_ideas if i.get("status")=="WIP"])
         if other and user_role()=="super user":
@@ -1152,39 +960,79 @@ def page_approval():
                         sprint_start = qi["sprint_start"] if qi else None
                         sprint_end   = qi["sprint_end"]   if qi else None
                         update_idea(idea["id"],{
-                            "status":"WIP","decision":"GO","approval_comment":comment,
-                            "wip_date":now,
+                            "status":"WIP","decision":"GO","approval_comment":comment,"wip_date":now,
                             **({"sprint_start":fmt_d(sprint_start),"sprint_end":fmt_d(sprint_end),
                                 "delivery_date":fmt_d(sprint_end),
                                 "sprint_meeting_date":fmt_d(sprint_start)} if sprint_start else {}),
                         })
                         st.success("✅ GO — Idea is now In Progress (WIP).")
                     else:
-                        update_idea(idea["id"],{
-                            "status":"Rejected","decision":"NO-GO",
-                            "rejection_reason":reason,"approval_comment":comment,
-                        })
+                        update_idea(idea["id"],{"status":"Rejected","decision":"NO-GO",
+                                               "rejection_reason":reason,"approval_comment":comment})
                         st.warning(f"❌ NO-GO — Idea rejected. Reason: {reason}")
                     st.rerun()
     render_copyright()
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  PAGE: DASHBOARD  (unchanged — no ocean-blue override here)
+#  PAGE: DASHBOARD  — with interlinked filters
 # ══════════════════════════════════════════════════════════════════════════════
 def page_dashboard():
     page_header("Dashboard ")
-    ideas = get_all()
-    if not ideas:
+    all_ideas_raw = get_all()
+    if not all_ideas_raw:
         st.info("No ideas yet.")
         render_copyright(); return
 
-    def cnt(s): return len([i for i in ideas if i.get("status")==s])
-    def cnt_cat(cat): return len([i for i in ideas if i.get("category")==cat])
+    # ── FILTER BAR ────────────────────────────────────────────────────────
+    users    = get_users()
+    all_pls  = sorted({i.get("pl_name","") for i in all_ideas_raw if i.get("pl_name","")})
+    all_regs = sorted({i.get("region","")   for i in all_ideas_raw if i.get("region","")})
+    all_cats = CATEGORIES
+
+    st.markdown('<div class="filter-bar">', unsafe_allow_html=True)
+    fc1, fc2, fc3, fc4 = st.columns([1.2, 1.2, 1.2, 0.5])
+    with fc1:
+        f_cat = st.multiselect("Category", all_cats, key="f_cat",
+                               placeholder="All categories", label_visibility="collapsed")
+        st.caption("🗂 Category")
+    with fc2:
+        f_pl  = st.multiselect("PL/SPL", all_pls, key="f_pl",
+                               placeholder="All PLs", label_visibility="collapsed")
+        st.caption("🧑‍💼 PL / SPL")
+    with fc3:
+        f_reg = st.multiselect("Region", all_regs, key="f_reg",
+                               placeholder="All regions", label_visibility="collapsed")
+        st.caption("🌍 Region")
+    with fc4:
+        st.write("")
+        if st.button("🔄 Reset", use_container_width=True):
+            for k in ["f_cat","f_pl","f_reg"]: st.session_state.pop(k,None)
+            st.rerun()
+        st.caption("Reset filters")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Apply filters — interlinked (all three narrow the same set)
+    ideas = all_ideas_raw
+    if f_cat: ideas = [i for i in ideas if i.get("category","") in f_cat]
+    if f_pl:  ideas = [i for i in ideas if i.get("pl_name","") in f_pl]
+    if f_reg: ideas = [i for i in ideas if i.get("region","") in f_reg]
+
+    active_filters = bool(f_cat or f_pl or f_reg)
+    if active_filters:
+        st.caption(f"📌 Showing **{len(ideas)}** of **{len(all_ideas_raw)}** ideas after filters.")
+
+    if not ideas:
+        st.warning("No ideas match the selected filters.")
+        render_copyright(); return
+
+    # ── Local helper lambdas (scoped to filtered set) ─────────────────────
+    def cnt(s):        return len([i for i in ideas if i.get("status")==s])
+    def cnt_cat(cat):  return len([i for i in ideas if i.get("category")==cat])
     def cnt_cat_ac(cat,ac): return len([i for i in ideas if i.get("category")==cat and i.get("automation_category")==ac])
-    def cnt_ac(ac): return len([i for i in ideas if i.get("automation_category")==ac])
-    def hrs_cat(cat): return round(sum(idea_hours(i) for i in ideas if i.get("category")==cat),1)
-    def roi_cat(cat): return round(sum(float(i.get("roi",0) or 0) for i in ideas if i.get("category")==cat),2)
-    def roi_ac(ac): return round(sum(float(i.get("roi",0) or 0) for i in ideas if i.get("automation_category")==ac),2)
+    def cnt_ac(ac):    return len([i for i in ideas if i.get("automation_category")==ac])
+    def hrs_cat(cat):  return round(sum(idea_hours(i) for i in ideas if i.get("category")==cat),1)
+    def roi_cat(cat):  return round(sum(float(i.get("roi",0) or 0) for i in ideas if i.get("category")==cat),2)
+    def roi_ac(ac):    return round(sum(float(i.get("roi",0) or 0) for i in ideas if i.get("automation_category")==ac),2)
 
     total     = len(ideas)
     cust_hrs  = hrs_cat("Customer Requirement")
@@ -1195,6 +1043,7 @@ def page_dashboard():
     int_cnt   = cnt_cat("Internal")
     completed = cnt("Completed")
 
+    # ── ROW 1: KPI Cards ─────────────────────────────────────────────────
     st.markdown("##### 📦 Key Metrics")
     c1,c2,c3,c4 = st.columns(4)
     with c1: kpi_card(total,"Total Ideas","#1a4fad",f"{completed} completed | {cnt('Rejected')} rejected","💡")
@@ -1202,96 +1051,140 @@ def page_dashboard():
     with c3: kpi_card(f"{cust_hrs:,.0f} hrs","Customer Hrs Saved / yr","#00498F",f"ROI: {cust_roi} | {cust_cnt} ideas | WIP: {cnt('WIP')}","⏱️")
     with c4: kpi_card(f"{int_hrs:,.0f} hrs","Internal Hrs Saved / yr","#0ea5e9",f"ROI: {int_roi} | {int_cnt} ideas | UAT: {cnt('UAT')}","⏳")
 
+    # ── ROW 2: Auto Category Breakdown ───────────────────────────────────
     st.markdown("##### 🔧 Automation Category Breakdown")
-    cols = st.columns(len(AUTO_CATS))
+    auto_cols = st.columns(len(AUTO_CATS))
     for idx, ac in enumerate(AUTO_CATS):
         ac_total = cnt_ac(ac)
-        ac_cust  = cnt_cat_ac("Customer Requirement", ac)
-        ac_int   = cnt_cat_ac("Internal", ac)
+        ac_cust  = cnt_cat_ac("Customer Requirement",ac)
+        ac_int   = cnt_cat_ac("Internal",ac)
         ac_roi   = roi_ac(ac)
-        color    = AUTO_CAT_COLORS.get(ac, "#888")
-        with cols[idx]:
+        color    = AUTO_CAT_COLORS.get(ac,"#888")
+        with auto_cols[idx]:
             kpi_card(ac_total, ac, color,
                      f"🔴 Cust: {ac_cust}  🔵 Int: {ac_int}  |  ROI: {ac_roi}", "🔧")
 
+    # ── ROW 3: Charts row (Status + Project + Customer+Region combo pies) ─
     st.markdown("##### 📈 Charts")
-    ch1, ch2 = st.columns(2)
+    ch1, ch2, ch3 = st.columns(3)
 
     with ch1:
-        st.markdown("<span style='font-size:13px;font-weight:600;'>Ideas by Status</span>", unsafe_allow_html=True)
+        st.markdown("<span style='font-size:clamp(10px,1vw,13px);font-weight:600;'>Ideas by Status</span>", unsafe_allow_html=True)
         status_data = [{"value":cnt(s),"name":s,"itemStyle":{"color":STATUS_COLORS.get(s,"#888")}}
                        for s in STATUSES if cnt(s)>0]
         st_echarts({"tooltip":{"trigger":"item","formatter":"{b}: {c} ({d}%)"},
                     "series":[{"type":"pie","radius":["38%","68%"],
-                               "data":status_data,"label":{"fontSize":10}}]},
-                   height="240px")
+                               "data":status_data,"label":{"fontSize":"clamp(8px,0.8vw,10px)"}}]},
+                   height="220px")
 
     with ch2:
-        st.markdown("<span style='font-size:13px;font-weight:600;'>Hours Saved by Project</span>", unsafe_allow_html=True)
+        st.markdown("<span style='font-size:clamp(10px,1vw,13px);font-weight:600;'>Customer & Region — Count + ROI</span>", unsafe_allow_html=True)
+        # Customer pie (count)
+        cust_data = {}
+        for i in ideas:
+            c = i.get("customer","") or "Unknown"
+            cust_data[c] = cust_data.get(c,{"count":0,"roi":0.0})
+            cust_data[c]["count"] += 1
+            cust_data[c]["roi"]   += float(i.get("roi",0) or 0)
+        # Region pie (count)
+        reg_data = {}
+        for i in ideas:
+            r = i.get("region","") or "Unknown"
+            reg_data[r] = reg_data.get(r,{"count":0,"roi":0.0})
+            reg_data[r]["count"] += 1
+            reg_data[r]["roi"]   += float(i.get("roi",0) or 0)
+
+        cust_palette = ["#E30613","#00AEEF","#7c3aed","#059669","#0d9488","#b45309","#0369a1"]
+        reg_palette  = ["#1a4fad","#f97316","#9333ea","#0891b2","#16a34a","#dc2626","#d97706"]
+
+        c_pie = [{"value":v["count"],"name":f'{k} ({round(v["roi"],1)} ROI)',
+                  "itemStyle":{"color":cust_palette[i%len(cust_palette)]}}
+                 for i,(k,v) in enumerate(cust_data.items())]
+        r_pie = [{"value":v["count"],"name":f'{k} ({round(v["roi"],1)} ROI)',
+                  "itemStyle":{"color":reg_palette[i%len(reg_palette)]}}
+                 for i,(k,v) in enumerate(reg_data.items())]
+
+        st_echarts({
+            "tooltip":{"trigger":"item","formatter":"{a}<br/>{b}: {c} ideas ({d}%)"},
+            "legend":{"show":False},
+            "series":[
+                {"name":"Customer","type":"pie",
+                 "radius":["0%","35%"],"center":["50%","50%"],
+                 "data":c_pie,
+                 "label":{"position":"inside","fontSize":8,"formatter":"{b}"},
+                 "labelLine":{"show":False}},
+                {"name":"Region","type":"pie",
+                 "radius":["42%","65%"],"center":["50%","50%"],
+                 "data":r_pie,
+                 "label":{"fontSize":8,"formatter":"{b}"},
+                 "labelLine":{"length":6,"length2":4}},
+            ]
+        }, height="220px")
+        st.caption("Inner ring = Customer · Outer ring = Region · Labels show ROI")
+
+    with ch3:
+        st.markdown("<span style='font-size:clamp(10px,1vw,13px);font-weight:600;'>Hours Saved by Project</span>", unsafe_allow_html=True)
         proj_hrs = {}
         for i in ideas:
             proj_hrs[i.get("project","Other")] = proj_hrs.get(i.get("project","Other"),0)+idea_hours(i)
         if proj_hrs:
             st_echarts({
                 "tooltip":{"trigger":"axis"},
-                "xAxis":{"type":"category","data":list(proj_hrs.keys()),"axisLabel":{"rotate":10,"fontSize":10}},
-                "yAxis":{"type":"value","name":"hrs/yr","nameTextStyle":{"fontSize":10}},
+                "grid":{"left":"3%","right":"4%","bottom":"28%","containLabel":True},
+                "xAxis":{"type":"category","data":list(proj_hrs.keys()),
+                         "axisLabel":{"rotate":30,"fontSize":8,"interval":0}},
+                "yAxis":{"type":"value","name":"hrs/yr","nameTextStyle":{"fontSize":8}},
                 "series":[{"type":"bar","data":[round(v,1) for v in proj_hrs.values()],
-                           "itemStyle":{"color":"#7c3aed"},"barMaxWidth":40}]},
-                height="240px")
+                           "itemStyle":{"color":"#7c3aed"},"barMaxWidth":32}]},
+                height="220px")
 
+    # ── ROW 4: Ideation Tree + Region chart ──────────────────────────────
     tr_col, wl_col = st.columns([1.4, 1])
 
     with tr_col:
         st.markdown("##### 🌳 Ideation Workflow Tree")
-
         def cs(cat,st_): return len([i for i in ideas if i.get("category")==cat and i.get("status")==st_])
         def rs(r): return len([i for i in ideas if i.get("status")=="Rejected" and i.get("rejection_reason")==r])
-
         def add_label_boxes(node):
-            color = node.get("itemStyle", {}).get("color", "#FFFFFF")
-            node["label"] = {
-                "show":True,"backgroundColor":color,"color":"#FFFFFF",
-                "borderRadius":5,"padding":[4,8],"position":"inside",
-                "align":"center","fontSize":10,"fontWeight":"bold"
-            }
+            color = node.get("itemStyle",{}).get("color","#FFFFFF")
+            node["label"] = {"show":True,"backgroundColor":color,"color":"#FFFFFF",
+                             "borderRadius":5,"padding":[4,8],"position":"inside",
+                             "align":"center","fontSize":10,"fontWeight":"bold"}
             for child in node.get("children",[]): add_label_boxes(child)
-
         tree_data = {
-            "name": f"Ideation ({total})",
-            "itemStyle": {"color":"#E30613"},
-            "children": [
-                {"name": f"Triaged ({cnt('Assigned')})", "itemStyle": {"color":"#1a4fad"},
-                 "children": [
-                     {"name":f"Customer ({cust_cnt})", "itemStyle":{"color":"#00498F"},
+            "name":f"Ideation ({total})","itemStyle":{"color":"#E30613"},
+            "children":[
+                {"name":f"Triaged ({cnt('Assigned')})","itemStyle":{"color":"#1a4fad"},
+                 "children":[
+                     {"name":f"Customer ({cust_cnt})","itemStyle":{"color":"#00498F"},
                       "children":[
                           {"name":f"WIP ({cs('Customer Requirement','WIP')})","itemStyle":{"color":"#0d9488"}},
                           {"name":f"UAT ({cs('Customer Requirement','UAT')})","itemStyle":{"color":"#0ea5e9"}},
                           {"name":f"Done ({cs('Customer Requirement','Completed')})","itemStyle":{"color":"#059669"}},
                       ]},
-                     {"name":f"Internal ({int_cnt})", "itemStyle":{"color":"#0ea5e9"},
+                     {"name":f"Internal ({int_cnt})","itemStyle":{"color":"#0ea5e9"},
                       "children":[
                           {"name":f"WIP ({cs('Internal','WIP')})","itemStyle":{"color":"#0d9488"}},
                           {"name":f"UAT ({cs('Internal','UAT')})","itemStyle":{"color":"#0ea5e9"}},
                           {"name":f"Done ({cs('Internal','Completed')})","itemStyle":{"color":"#059669"}},
                       ]},
                  ]},
-                {"name": f"Accepted ({cnt('WIP')+cnt('UAT')+cnt('Completed')})", "itemStyle": {"color":"#059669"},
-                 "children": [
-                     {"name":f"Customer ({cust_cnt})", "itemStyle":{"color":"#00498F"},
+                {"name":f"Accepted ({cnt('WIP')+cnt('UAT')+cnt('Completed')})","itemStyle":{"color":"#059669"},
+                 "children":[
+                     {"name":f"Customer ({cust_cnt})","itemStyle":{"color":"#00498F"},
                       "children":[
                           {"name":f"WIP ({cs('Customer Requirement','WIP')})","itemStyle":{"color":"#0d9488"}},
                           {"name":f"UAT ({cs('Customer Requirement','UAT')})","itemStyle":{"color":"#0ea5e9"}},
                           {"name":f"Done ({cs('Customer Requirement','Completed')})","itemStyle":{"color":"#059669"}},
                       ]},
-                     {"name":f"Internal ({int_cnt})", "itemStyle":{"color":"#0ea5e9"},
+                     {"name":f"Internal ({int_cnt})","itemStyle":{"color":"#0ea5e9"},
                       "children":[
                           {"name":f"WIP ({cs('Internal','WIP')})","itemStyle":{"color":"#0d9488"}},
                           {"name":f"UAT ({cs('Internal','UAT')})","itemStyle":{"color":"#0ea5e9"}},
                           {"name":f"Done ({cs('Internal','Completed')})","itemStyle":{"color":"#059669"}},
                       ]},
                  ]},
-                {"name": f"Rejected ({cnt('Rejected')})", "itemStyle": {"color":"#dc2626"},
+                {"name":f"Rejected ({cnt('Rejected')})","itemStyle":{"color":"#dc2626"},
                  "children":[
                      {"name":f"Technical ({rs('Technical Rejection')})","itemStyle":{"color":"#ef4444"}},
                      {"name":f"Business ({rs('Business Rejection')})","itemStyle":{"color":"#f97316"}},
@@ -1302,26 +1195,22 @@ def page_dashboard():
         st_echarts({
             "backgroundColor":"#0B0B0D",
             "tooltip":{"trigger":"item","triggerOn":"mousemove"},
-            "series":[{
-                "type":"tree","data":[tree_data],
-                "top":"5%","left":"7%","bottom":"5%","right":"15%",
-                "symbol":"rect","symbolSize":1,
-                "lineStyle":{"color":"#f97316","width":2},
-                "label":{"position":"left","verticalAlign":"middle","align":"right","fontSize":10},
-                "leaves":{"label":{"position":"right","verticalAlign":"middle","align":"left","fontSize":9}},
-                "emphasis":{"focus":"descendant"},
-                "expandAndCollapse":True,"animationDuration":550,"initialTreeDepth":2,
-            }]
+            "series":[{"type":"tree","data":[tree_data],
+                       "top":"5%","left":"7%","bottom":"5%","right":"15%",
+                       "symbol":"rect","symbolSize":1,
+                       "lineStyle":{"color":"#f97316","width":2},
+                       "label":{"position":"left","verticalAlign":"middle","align":"right","fontSize":10},
+                       "leaves":{"label":{"position":"right","verticalAlign":"middle","align":"left","fontSize":9}},
+                       "emphasis":{"focus":"descendant"},
+                       "expandAndCollapse":True,"animationDuration":550,"initialTreeDepth":2}]
         }, height="400px")
 
     with wl_col:
         st.markdown("##### 🌍 Ideas by Region")
-        # Build region → {count, roi} aggregation
         region_data = {}
         for i in ideas:
             r = i.get("region","") or "Unknown"
-            if r not in region_data:
-                region_data[r] = {"count": 0, "roi": 0.0}
+            if r not in region_data: region_data[r] = {"count":0,"roi":0.0}
             region_data[r]["count"] += 1
             region_data[r]["roi"]   += float(i.get("roi",0) or 0)
 
@@ -1330,25 +1219,21 @@ def page_dashboard():
         else:
             import pandas as pd
             region_df = pd.DataFrame([
-                {"Region": k, "Ideas": v["count"], "ROI": round(v["roi"],2)}
+                {"Region":k,"Ideas":v["count"],"ROI":round(v["roi"],2)}
                 for k,v in sorted(region_data.items(), key=lambda x: -x[1]["count"])
             ])
-            # Bar chart — ideas count per region
-            bar_data = [{"value": v["count"], "name": k} for k,v in
-                        sorted(region_data.items(), key=lambda x: -x[1]["count"])]
+            bar_data = [{"value":v["count"],"name":k}
+                        for k,v in sorted(region_data.items(), key=lambda x: -x[1]["count"])]
             st_echarts({
-                "tooltip": {"trigger":"axis"},
-                "grid": {"left":"3%","right":"4%","bottom":"25%","containLabel":True},
-                "xAxis": {"type":"category",
-                           "data":[d["name"] for d in bar_data],
-                           "axisLabel":{"rotate":35,"fontSize":9}},
-                "yAxis": [
-                    {"type":"value","name":"Ideas","nameTextStyle":{"fontSize":9},
-                     "axisLabel":{"fontSize":9}},
-                    {"type":"value","name":"ROI","nameTextStyle":{"fontSize":9},
-                     "axisLabel":{"fontSize":9}},
+                "tooltip":{"trigger":"axis"},
+                "grid":{"left":"3%","right":"4%","bottom":"25%","containLabel":True},
+                "xAxis":{"type":"category","data":[d["name"] for d in bar_data],
+                         "axisLabel":{"rotate":35,"fontSize":9}},
+                "yAxis":[
+                    {"type":"value","name":"Ideas","nameTextStyle":{"fontSize":9},"axisLabel":{"fontSize":9}},
+                    {"type":"value","name":"ROI","nameTextStyle":{"fontSize":9},"axisLabel":{"fontSize":9}},
                 ],
-                "series": [
+                "series":[
                     {"name":"Ideas","type":"bar","data":[d["value"] for d in bar_data],
                      "itemStyle":{"color":"#1a4fad"},"barMaxWidth":28},
                     {"name":"ROI","type":"line","yAxisIndex":1,
@@ -1358,15 +1243,14 @@ def page_dashboard():
                 ],
                 "legend":{"data":["Ideas","ROI"],"bottom":0,"textStyle":{"fontSize":9}},
             }, height="320px")
-            # Summary table below chart
             st.dataframe(region_df, use_container_width=True, hide_index=True,
                          column_config={
-                             "Region": st.column_config.TextColumn(width="medium"),
-                             "Ideas":  st.column_config.NumberColumn(width="small"),
-                             "ROI":    st.column_config.NumberColumn(format="%.2f", width="small"),
+                             "Region":st.column_config.TextColumn(width="medium"),
+                             "Ideas": st.column_config.NumberColumn(width="small"),
+                             "ROI":   st.column_config.NumberColumn(format="%.2f",width="small"),
                          })
 
-    # ── Planner-style Kanban board ────────────────────────────────────────
+    # ── Kanban Board ──────────────────────────────────────────────────────
     st.markdown("##### 📋 Kanban Board")
     render_kanban_board(ideas)
 
@@ -1382,7 +1266,6 @@ def page_dashboard():
         mask = df.apply(lambda r: r.astype(str).str.contains(search, case=False).any(), axis=1)
         df   = df[mask]
     st.dataframe(df, use_container_width=True, hide_index=True)
-
     csv_buf = io.StringIO()
     df.to_csv(csv_buf, index=False)
     st.download_button("⬇️ Download CSV", csv_buf.getvalue(), "turbodrive_ideas.csv", "text/csv")
@@ -1393,23 +1276,20 @@ def page_dashboard():
 #  PAGE: EMAIL
 # ══════════════════════════════════════════════════════════════════════════════
 def page_email():
-    inject_page_bg()
     page_header("Send Meeting Invites 📤")
     st.caption("All dates are auto-computed from sprint scheduling. Click 'Open in Outlook' to review & send manually.")
     all_ideas = get_all()
     idea_opts = {f"{i.get('idea_name','(no name)')} — {i.get('status','')}":i for i in all_ideas}
     if not idea_opts:
-        st.info("No ideas yet.")
-        render_copyright(); return
+        st.info("No ideas yet."); render_copyright(); return
 
     col1,col2 = st.columns(2)
-    with col1:
-        sel_name = st.selectbox("Select Idea", list(idea_opts.keys()))
+    with col1: sel_name = st.selectbox("Select Idea", list(idea_opts.keys()))
     with col2:
-        mtype    = st.selectbox("Meeting Type",
-                                ["vsm — VSM Session (11:00 AM)",
-                                 "sprint — Sprint Planning (10:00 AM)",
-                                 "delivery — Delivery/Demo Review (03:00 PM)"])
+        mtype = st.selectbox("Meeting Type",
+                             ["vsm — VSM Session (11:00 AM)",
+                              "sprint — Sprint Planning (10:00 AM)",
+                              "delivery — Delivery/Demo Review (03:00 PM)"])
 
     idea  = idea_opts[sel_name]
     mkey  = mtype.split(" — ")[0]
@@ -1433,7 +1313,6 @@ def page_email():
         "sprint":  [idea.get("assigned_engineer",""),idea.get("pl_name","")],
         "delivery":[idea.get("submitter_email",""),idea.get("assigned_engineer",""),idea.get("pl_name","")],
     }
-
     if mdate:
         url = build_meeting_outlook(mkey, idea, mdate, recips_map[mkey])
         st.markdown(f'<a href="{url}" target="_blank" class="outlook-btn">📤 Open in Outlook</a>', unsafe_allow_html=True)
@@ -1458,10 +1337,8 @@ def page_email():
 #  PAGE: ADMIN
 # ══════════════════════════════════════════════════════════════════════════════
 def page_admin():
-    inject_page_bg()
     page_header("Admin Panel ⚙️")
     users = get_users()
-
     tab1,tab2,tab3 = st.tabs(["👥 Users","➕ Add User","🔑 Password Reset"])
 
     with tab1:
@@ -1475,12 +1352,10 @@ def page_admin():
                                             key=f"role_{u['email']}")
                 with col2:
                     if st.button("💾 Update Role", key=f"upd_{u['email']}"):
-                        update_role(u["email"], new_role)
-                        st.success("Role updated."); pass  # no local cache to clear; st.rerun()
+                        update_role(u["email"], new_role); st.success("Role updated.")
                 with col3:
                     if st.button("🗑 Delete", key=f"del_{u['email']}"):
-                        delete_user(u["email"])
-                        st.warning("User deleted."); pass  # no local cache to clear; st.rerun()
+                        delete_user(u["email"]); st.warning("User deleted.")
 
     with tab2:
         with st.form("add_user_form", clear_on_submit=True):
@@ -1498,53 +1373,39 @@ def page_admin():
         with st.form("reset_pw_form"):
             target = st.selectbox("User", emails)
             col1,col2 = st.columns(2)
-            with col1:
-                new_pw  = st.text_input("Set New Password (optional)", type="password")
+            with col1: new_pw = st.text_input("Set New Password (optional)", type="password")
             with col2:
                 do_reset = st.form_submit_button(f"Reset to '{DEFAULT_PW}'")
                 do_set   = st.form_submit_button("Set Specific Password")
             if do_reset:
                 reset_password(target); st.success(f"Password reset to '{DEFAULT_PW}' for {target}")
             elif do_set:
-                if not new_pw or len(new_pw)<4:
-                    st.error("Minimum 4 characters.")
-                else:
-                    set_password(target, new_pw)
-                    st.success(f"Password updated for {target}")
+                if not new_pw or len(new_pw)<4: st.error("Minimum 4 characters.")
+                else: set_password(target, new_pw); st.success(f"Password updated for {target}")
     render_copyright()
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  MAIN ROUTER
 # ══════════════════════════════════════════════════════════════════════════════
 def main():
-    st.set_page_config(
-        page_title="Turbo Drive",
-        page_icon="",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-
+    st.set_page_config(page_title="Turbo Drive", page_icon="", layout="wide",
+                       initial_sidebar_state="expanded")
     init_db()
-
     if "theme" not in st.session_state:
         st.session_state["theme"] = "ALTEN Red & Blue"
     apply_theme(ss("theme"))
 
     override = ss("_page_override")
-    if override == "register":
-        page_register(); return
-    if override == "change_password":
-        page_change_password(); return
-
-    if not logged_in():
-        page_login(); return
+    if override == "register":    page_register(); return
+    if override == "change_password": page_change_password(); return
+    if not logged_in():           page_login(); return
 
     t = THEMES.get(ss("theme"), THEMES["ALTEN Red & Blue"])
     with st.sidebar:
         st.markdown(f"""
         <div style="text-align:center;padding:10px 0 6px;">
           <img src="{ALTEN_LOGO_URL}" style="height:22px;object-fit:contain;margin-bottom:4px;" alt="ALTEN"/><br>
-          <span style="font-size:20px;font-weight:900;
+          <span style="font-size:clamp(14px,1.5vw,20px);font-weight:900;
                background:linear-gradient(135deg,{t['primary']},{t['secondary']});
                -webkit-background-clip:text;background-clip:text;color:transparent;">
              TURBO DRIVE
