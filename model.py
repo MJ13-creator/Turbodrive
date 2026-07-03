@@ -3,6 +3,7 @@ from datetime import datetime, date, timedelta
 from urllib.parse import quote
 import streamlit as st
 from streamlit_echarts import st_echarts
+from streamlit_sortables import sort_items
 from werkzeug.security import generate_password_hash, check_password_hash
 from supabase import create_client, Client
 
@@ -445,6 +446,39 @@ def apply_theme(theme_name):
         transition:background .15s;cursor:pointer;
     }}
     [data-testid="stSidebar"] .stRadio label:hover{{background:rgba(255,255,255,.1);}}
+
+    /* ── Force readable text for native Streamlit chrome on every theme ──
+       Streamlit's own widgets (labels, captions, metrics, alerts, tabs,
+       expanders, inputs) render with Streamlit's built-in light-theme text
+       color regardless of the custom theme picked above — on dark themes
+       (e.g. Midnight Dark) that text goes dark-on-dark and disappears.
+       These rules re-point that native chrome at the active theme's colors.
+       No !important on the bare "> p"/li rules so any element that already
+       sets its own inline color (all the custom cards in this file) keeps
+       winning the cascade — only truly unstyled native text is affected. */
+    h4,h5,h6{{color:{text_color};}}
+    [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] *{{color:{text_color} !important;opacity:.75;}}
+    [data-testid="stMetricValue"]{{color:{text_color} !important;}}
+    [data-testid="stMetricLabel"]{{color:{text_color} !important;opacity:.75;}}
+    [data-testid="stMetricDelta"]{{color:{text_color} !important;}}
+    [data-testid="stWidgetLabel"] p{{color:{text_color} !important;}}
+    [data-testid="stMarkdownContainer"] > p,
+    [data-testid="stMarkdownContainer"] > ul li,
+    [data-testid="stMarkdownContainer"] > ol li{{color:{text_color};}}
+    [data-testid="stExpander"] summary,
+    [data-testid="stExpander"] summary p{{color:{text_color} !important;}}
+    [data-testid="stTabs"] button p{{color:{text_color} !important;}}
+    [data-testid="stAlertContent"], [data-testid="stAlertContent"] p{{color:{text_color} !important;}}
+    [data-testid="stTextInput"] input,
+    [data-testid="stTextArea"] textarea,
+    [data-testid="stNumberInput"] input,
+    [data-testid="stDateInput"] input,
+    [data-testid="stSelectbox"] [data-baseweb="select"] > div,
+    [data-testid="stMultiSelect"] [data-baseweb="select"] > div{{
+        background-color:{surface} !important;color:{text_color} !important;
+    }}
+    [data-testid="stDataFrame"]{{color:{text_color};}}
+
     h1{{
         background:linear-gradient(135deg,{t['primary']},{t['secondary']});
         -webkit-background-clip:text;background-clip:text;color:transparent;
@@ -830,11 +864,12 @@ def render_category_panel(panel_title, panel_icon, categories, ideas, state_key,
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  KANBAN: NATIVE STREAMLIT COLUMN + EXPANDER BOARD  (with Parent/Child links)
-#  Note: true HTML5 drag-and-drop card-to-card linking is not supported by
-#  Streamlit's widget model without a custom JS component. Parent/Child
-#  relationships are created via a "Set Parent" dropdown on each card —
-#  same end result (hierarchy, expand/collapse, aggregated metrics) without
-#  a drag gesture.
+#  Nesting a card inside another (parent/child) is done via real drag-and-drop,
+#  powered by the streamlit-sortables component (pip install streamlit-sortables).
+#  Dropping a card into another card's box tags it (parent_id) as that card's
+#  child. Nesting is one level deep and scoped to a single status lane — a
+#  card that already has children becomes a drop target (its box) rather than
+#  a draggable item itself, so grandchildren can't be created.
 # ══════════════════════════════════════════════════════════════════════════════
 def _children_of(parent_id, all_ideas):
     return [i for i in all_ideas if i.get("parent_id") == parent_id]
@@ -871,11 +906,17 @@ def render_kanban_board(ideas):
     for col, status in zip(cols, STATUSES):
         color  = STATUS_COLORS.get(status,"#888")
         bucket = [i for i in ideas if i.get("status")==status]
+        bucket_ids = {i["id"] for i in bucket}
         with col:
             if not bucket:
                 st.caption("_Empty_")
-            for idea in bucket:
+            top_level = [i for i in bucket if not i.get("parent_id") or i.get("parent_id") not in bucket_ids]
+            for idea in top_level:
                 _render_kanban_card(idea, status, color, ideas, id_to_idea, depth=0)
+                for child in _children_of(idea["id"], bucket):
+                    _render_kanban_card(child, status, color, ideas, id_to_idea, depth=1)
+
+    _render_kanban_nesting_ui(ideas)
 
 def _render_kanban_card(idea, status, color, all_ideas, id_to_idea, depth=0):
     eng      = idea.get("assigned_engineer") or ""
@@ -885,19 +926,32 @@ def _render_kanban_card(idea, status, color, all_ideas, id_to_idea, depth=0):
     name     = idea.get("name") or "-"
     eng_name = eng.split("@")[0] if "@" in eng else (eng or "—")
     # Simple label: "Child Card" prefix for nested cards, card icon for top-level
-    label_prefix = "📦 Child Card — " if depth > 0 else "📄 "
+    label_prefix = "↳ 📦 Child Card — " if depth > 0 else "📄 "
     label = label_prefix + (idea.get("idea_name") or "No Name")[:26]
 
     with st.expander(label, expanded=False):
+        parent_name = ""
+        if depth > 0 and idea.get("parent_id") in id_to_idea:
+            parent_name = id_to_idea[idea["parent_id"]].get("idea_name","") or "Untitled"
         st.markdown(
             f'<div style="border-left:3px solid {color};padding-left:8px;margin-bottom:6px;">'
             f'<span style="font-size:clamp(9px,0.85vw,11px);color:#64748b;">📌 {proj}</span><br>'
             f'<span style="font-size:clamp(9px,0.85vw,11px);color:#64748b;">👤 {name}</span><br>'
             f'<span style="font-size:clamp(9px,0.85vw,11px);color:#64748b;">👷 {eng_name}</span>'
+            +(f'<br><span style="font-size:clamp(9px,0.85vw,11px);color:#7c3aed;">🔗 Child of: {parent_name}</span>' if parent_name else "")
             +(f'<br><span style="font-size:clamp(8px,0.75vw,10px);color:#0369a1;">📅 {delivery}</span>' if delivery else "")
             +(f'<br><span style="font-size:clamp(8px,0.75vw,10px);color:#b45309;">⏸ {hold[:30]}</span>' if hold else "")
             +f'</div>', unsafe_allow_html=True,
         )
+
+        summary = _parent_summary(idea, all_ideas) if depth == 0 else None
+        if summary:
+            st.markdown(
+                f'<div style="font-size:10px;color:#64748b;margin-bottom:6px;">'
+                f'🧩 {summary["children"]} child card(s) · {summary["completion_pct"]}% complete · '
+                f'ROI {summary["roi"]} · {summary["hours"]:,.0f} hrs saved</div>',
+                unsafe_allow_html=True,
+            )
 
         # ── Status move ────────────────────────────────────────────────────
         new_status = st.selectbox("Move to", STATUSES,
@@ -919,7 +973,77 @@ def _render_kanban_card(idea, status, color, all_ideas, id_to_idea, depth=0):
                 touch_activity()
                 st.rerun()
 
+        if depth > 0:
+            if st.button("↩ Remove from parent card", key=f"kanban_unnest_{idea['id']}", use_container_width=True):
+                update_idea(idea["id"], {"parent_id": ""})
+                touch_activity()
+                st.rerun()
+
         st.divider()
+
+def _render_kanban_nesting_ui(ideas):
+    """Real drag-and-drop: drag a card into another card's box to tag it as
+    that card's child (parent_id). Drag it into "Top-Level" to un-nest it."""
+    st.markdown("---")
+    with st.expander("🧩 Nest Cards — Drag & Drop", expanded=False):
+        st.caption(
+            "Pick a status lane, then drag a card into another card's box to "
+            "tag it as that card's **child card**. Drag it back into "
+            "**Top-Level** to un-nest it."
+        )
+        status = st.selectbox("Lane", STATUSES, key="kanban_nest_status")
+        bucket = [i for i in ideas if i.get("status") == status]
+        bucket_ids = {i["id"] for i in bucket}
+        id_to_idea = {i["id"]: i for i in bucket}
+
+        if len(bucket) < 2:
+            st.caption("_Need at least 2 cards in this lane to nest one inside another._")
+            return
+
+        top_level = [i for i in bucket if not i.get("parent_id") or i.get("parent_id") not in bucket_ids]
+        parents_with_kids = {p["id"] for p in top_level if _children_of(p["id"], bucket)}
+        draggable = [i for i in bucket if i["id"] not in parents_with_kids]
+
+        def _label(i):
+            nm = (i.get("idea_name") or "No Name")[:28]
+            return f"{nm} · {i['id'][:6]}"
+
+        label_to_id = {_label(i): i["id"] for i in draggable}
+
+        containers = [{
+            "header": "🗂️ Top-Level (drag here to un-nest)",
+            "items": [_label(i) for i in draggable
+                      if not i.get("parent_id") or i.get("parent_id") not in bucket_ids],
+        }]
+        header_to_parent = {containers[0]["header"]: None}
+        for parent in top_level:
+            header = f"📦 Inside: {(parent.get('idea_name') or 'No Name')[:24]} · {parent['id'][:6]}"
+            header_to_parent[header] = parent["id"]
+            containers.append({
+                "header": header,
+                "items": [_label(k) for k in _children_of(parent["id"], bucket)],
+            })
+
+        result = sort_items(containers, multi_containers=True, direction="vertical",
+                             key=f"kanban_sort_{status}")
+
+        changed = False
+        for c in result:
+            new_parent = header_to_parent.get(c["header"])
+            for label in c["items"]:
+                idea_id = label_to_id.get(label)
+                if not idea_id:
+                    continue
+                target = new_parent or ""
+                if idea_id == target:
+                    continue  # dropped a card into its own box — ignore
+                current = (id_to_idea.get(idea_id) or {}).get("parent_id") or ""
+                if current != target:
+                    update_idea(idea_id, {"parent_id": target})
+                    changed = True
+        if changed:
+            touch_activity()
+            st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  PAGE: LOGIN
@@ -1941,6 +2065,29 @@ html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'I
                 "UK": region_data.get("UK", {"count":0})["count"],
                 "Germany": region_data.get("GERMANY", {"count":0})["count"],
             }
+            max_count = max(region_counts.values()) or 1
+
+            def _highlight_size(c):
+                # Glow ring scales with idea count so the busiest region is
+                # visually the most "highlighted" one on the map.
+                return 90 + round((c / max_count) * 70) if c else 60
+
+            # Approximate landmass position (top/left %) for each region's pin.
+            REGION_POS = {
+                "India":   {"top": "38%", "left": "70%"},
+                "USA":     {"top": "30%", "left": "17%"},
+                "UK":      {"top": "18%", "left": "35%"},
+                "Germany": {"top": "22%", "left": "42%"},
+            }
+            active_regions = {k: v for k, v in region_counts.items() if v > 0}
+
+            pins_html = "".join(
+                f'<div class="region-highlight" style="top:{REGION_POS[k]["top"]};left:{REGION_POS[k]["left"]};'
+                f'width:{_highlight_size(v)}px;height:{_highlight_size(v)}px;"></div>'
+                f'<div class="region-pin" style="top:{REGION_POS[k]["top"]};left:{REGION_POS[k]["left"]};" '
+                f'title="{k}: {v} idea(s)">{v}</div>'
+                for k, v in active_regions.items()
+            )
 
             map_html = f"""
             <style>
@@ -1956,39 +2103,38 @@ html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'I
               .region-map-shell .region-header {{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:0 6px;}}
               .region-map-shell .region-title {{font-size:14px;font-weight:700;color:#f8fafc;}}
               .region-map-shell .region-subtitle {{font-size:12px;color:rgba(248,250,252,.72);}}
-              .region-map-shell .region-pin {{position:absolute;display:inline-flex;align-items:center;justify-content:center;
-                width:62px;height:42px;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.92);
-                color:#0f172a;font-size:14px;font-weight:800;white-space:nowrap;
-                text-shadow:none;box-shadow:0 10px 30px rgba(0,0,0,.25);
-                transform:translate(-50%,-50%);
+              .region-map-shell .region-highlight {{position:absolute;border-radius:999px;transform:translate(-50%,-50%);
+                background:radial-gradient(circle,rgba(250,204,21,.55) 0%,rgba(250,204,21,.18) 55%,rgba(250,204,21,0) 75%);
+                animation:region-pulse 2.4s ease-in-out infinite;pointer-events:none;
               }}
-              .region-map-shell .region-pin::before {{content:'';position:absolute;inset:0;border-radius:999px;
-                background:radial-gradient(circle,rgba(250,204,21,.45) 0%,rgba(250,204,21,0) 70%);
-                z-index:-1;
+              @keyframes region-pulse {{
+                0%,100% {{opacity:.75;}} 50% {{opacity:1;}}
               }}
-              .region-map-shell .region-pin.zero {{opacity:.6;}}
-              .region-map-shell .region-pin.india {{top:60%;left:66%;}}
-              .region-map-shell .region-pin.usa {{top:36%;left:18%;}}
-              .region-map-shell .region-pin.uk {{top:26%;left:30%;}}
-              .region-map-shell .region-pin.germany {{top:30%;left:39%;}}
+              .region-map-shell .region-pin {{position:absolute;transform:translate(-50%,-50%);
+                font-size:13px;font-weight:800;color:#facc15;
+                text-shadow:0 0 5px rgba(0,0,0,.95),0 0 2px rgba(0,0,0,.95);
+                pointer-events:none;
+              }}
             </style>
             <div class="region-map-shell">
               <div class="region-overlay">
                 <div class="region-header">
                   <div>
-                    <div class="region-title"></div>
-                    <div class="region-subtitle"></div>
+                    <div class="region-title">🌍 Ideas by Region</div>
+                    <div class="region-subtitle">Glow size = idea volume for that region</div>
                   </div>
                 </div>
               </div>
-              <div class="region-pin india{' zero' if region_counts['India']==0 else ''}" title="India: {region_counts['India']} idea(s)">{region_counts['India']}</div>
-              <div class="region-pin usa{' zero' if region_counts['USA']==0 else ''}" title="USA: {region_counts['USA']} idea(s)">{region_counts['USA']}</div>
-              <div class="region-pin uk{' zero' if region_counts['UK']==0 else ''}" title="UK: {region_counts['UK']} idea(s)">{region_counts['UK']}</div>
-              <div class="region-pin germany{' zero' if region_counts['Germany']==0 else ''}" title="Germany: {region_counts['Germany']} idea(s)">{region_counts['Germany']}</div>
+              {pins_html}
             </div>
             """
             st.markdown(map_html, unsafe_allow_html=True)
-
+            if active_regions:
+                st.caption(
+                    "📍 " + "  ·  ".join(f"**{k}**: {v} idea(s)" for k, v in active_regions.items())
+                )
+            else:
+                st.caption("No ideas with a region assigned yet.")
             if no_region_count:
                 st.caption(f"ℹ️ {no_region_count} idea(s) have no region assigned and are excluded.")
     # ── All Ideas table + CSV (above Kanban) ────────────────────────────
@@ -2943,11 +3089,15 @@ def main():
           <span style="font-size:11px;">{ss('role','')}</span>
         </div>""", unsafe_allow_html=True)
 
-        # Style buttons to use constant black background and white text
+        # Style sidebar buttons + theme dropdown with one constant background
+        # (scoped to the sidebar only — an unscoped selector here previously
+        # forced every button app-wide to plain black).
         st.markdown("""
         <style>
-        div.stButton > button {background-color:#000 !important; color:#fff !important; border: none !important; border-radius:6px !important; padding:6px 10px !important}
-        div.stButton > button:hover {opacity:0.95}
+        [data-testid="stSidebar"] div.stButton > button {background-color:#000 !important; color:#fff !important; border: 1px solid #262626 !important; border-radius:6px !important; padding:6px 10px !important}
+        [data-testid="stSidebar"] div.stButton > button:hover {opacity:0.85}
+        [data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"] > div {background-color:#000 !important; color:#fff !important; border: 1px solid #262626 !important; border-radius:6px !important;}
+        [data-testid="stSidebar"] [data-testid="stSelectbox"] svg {fill:#fff !important;}
         </style>
         """, unsafe_allow_html=True)
 
