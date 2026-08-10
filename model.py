@@ -26,7 +26,7 @@ def get_supabase() -> Client:
 STATUSES   = ["New Idea","Assigned","WIP","UAT","Completed","Hold/Park","Rejected"]
 PROJECTS   = ["EFS CA-MRO","EFS BA-MRO","EFS BA-LCE","EFS CA-LCE","EFS Controls","EFS Technical Response","Others"]
 CATEGORIES = ["Customer Requirement","Internal"]
-AUTOMATION_CATS = ["Automation-Personal Productivity","Automation-Process Improvement","Automation-Defined Product and Sales","Automation-Quality Enhancement"]
+AUTOMATION_CATS = ["Automation-Personal Productivity","Automation-Process Improvement","Automation-Defined Product and Sales"]
 AI_CATS         = ["AI-Personal Productivity","AI-Process Improvement","AI-Defined Product and Sales"]
 AUTO_CATS  = AUTOMATION_CATS + AI_CATS   # kept for feasibility dropdown (flat list)
 FREQ_MULT  = {"Daily":260,"Weekly":52,"Monthly":12,"Yearly":1}
@@ -49,11 +49,11 @@ BLOCKED_DOMAINS = {
 }
 
 ROLE_PAGES = {
-    "super user":         ["Dashboard","Submit Idea","PL Assignment","Feasibility","Approval","Admin","OTP List","Workflow","Deployed Tools"],
-    "normal user":        ["Submit Idea","Workflow"],
-    "automation engineer":["Dashboard","Submit Idea","Feasibility","Workflow","Deployed Tools"],
-    "automation pl":      ["Dashboard","Submit Idea","PL Assignment","Feasibility","Approval","Workflow","Deployed Tools"],
-    "pl/spl":             ["Dashboard","Submit Idea","Approval","Workflow","Deployed Tools"],
+    "super user":         ["Dashboard","Submit Idea","PL Assignment","Feasibility","Approval","Admin","OTP List","Deployed Tools"],
+    "normal user":        ["Dashboard","Submit Idea"],
+    "automation engineer":["Dashboard","Submit Idea","Feasibility","Deployed Tools"],
+    "automation pl":      ["Dashboard","Submit Idea","PL Assignment","Feasibility","Approval","Deployed Tools"],
+    "pl/spl":             ["Dashboard","Submit Idea","Approval","Deployed Tools"],
 }
 PW_ROLES = {"super user","automation engineer","automation pl","pl/spl"}
 
@@ -63,7 +63,7 @@ AUTO_CAT_COLORS = {
     "Automation-Personal Productivity":"#1a4fad",
     "Automation-Process Improvement":"#7c3aed",
     "Automation-Defined Product and Sales":"#059669",
-    "Automation-Quality Enhancement":"#0d9488",
+    #"Automation-Quality Enhancement":"#0d9488",
     "AI-Personal Productivity":"#0369a1",
     "AI-Process Improvement":"#9333ea",
     "AI-Defined Product and Sales":"#0891b2",
@@ -85,7 +85,6 @@ THEMES = {
     "Ocean Blue":         {"primary":"#1a4fad","secondary":"#0ea5e9","bg":"#f0f4ff","sidebar":"#0a0a0a"},
     "Forest Green":       {"primary":"#059669","secondary":"#0d9488","bg":"#f0fdf4","sidebar":"#0a0a0a"},
     "Purple Haze":        {"primary":"#7c3aed","secondary":"#a855f7","bg":"#faf5ff","sidebar":"#0a0a0a"},
-    "Midnight Dark":      {"primary":"#e2e8f0","secondary":"#94a3b8","bg":"#0f172a","sidebar":"#0a0a0a"},
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -433,7 +432,8 @@ PL / SPL    : {idea.get('pl_name','-')}"""
 # ══════════════════════════════════════════════════════════════════════════════
 def render_support_bar():
     st.markdown(
-        f'<p style="font-size:11px;color:#94a3b8;margin-top:-10px;margin-bottom:10px;">'
+        f'<p style="font-size:11px;color:#94a3b8;margin-top:-10px;margin-bottom:10px;'
+        f'margin-left:57px;padding-left:0;">'
         f'For any queries, reach out to <b>{SUPPORT_NAME}</b> — '
         f'<a href="mailto:{SUPPORT_EMAIL}" style="color:#00AEEF;">{SUPPORT_EMAIL}</a></p>',
         unsafe_allow_html=True
@@ -464,9 +464,8 @@ def page_header(title: str):
 # ══════════════════════════════════════════════════════════════════════════════
 def apply_theme(theme_name):
     t = THEMES.get(theme_name, THEMES["ALTEN Red & Blue"])
-    dark_bg = theme_name == "Midnight Dark"
-    text_color = "#e2e8f0" if dark_bg else "#020202"
-    surface = "#1e293b" if dark_bg else "#ffffff"
+    text_color = "#020202"
+    surface = "#ffffff"
     st.markdown(f"""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
@@ -558,27 +557,110 @@ def apply_theme(theme_name):
         box-shadow:0 1px 4px rgba(0,0,0,.05);
     }}
 
-    /* ── Premium illustrated KPI card (50/50 split) ─────────────────────── */
+    /* Reset button in dashboard filter row — match the multiselect filter
+       boxes (surface background, border, rounded format) so fc4 blends in */
+    [data-testid="stButton"] button#reset_filters{{
+        background:{surface} !important;
+        color:{t['primary']} !important;
+        border:1px solid #e2e8f0 !important;
+        border-radius:8px !important;
+        font-weight:600 !important;
+        height:38px !important;
+        padding:0 16px !important;
+        box-shadow:0 1px 2px rgba(0,0,0,.04) !important;
+    }}
+    [data-testid="stButton"] button#reset_filters:hover{{
+        background:{surface} !important;
+        border-color:{t['primary']} !important;
+        color:{t['primary']} !important;
+        opacity:1 !important;
+    }}
+
+    /* ── Premium Glassmorphism KPI card (single-row horizontal) ─────────── */
     .kpi-card-v2{{
-        display:flex;align-items:center;gap:10px;
-        background:{surface};border-radius:16px;padding:12px 14px;
-        box-shadow:0 3px 14px rgba(0,0,0,.08);
-        transition:transform .18s ease, box-shadow .18s ease;
-        margin-bottom:8px;min-height:88px;
+        position:relative;display:flex;align-items:center;gap:12px;
+        background:rgba(255,255,255,.55);
+        backdrop-filter:blur(14px) saturate(160%);
+        -webkit-backdrop-filter:blur(14px) saturate(160%);
+        border-radius:20px;padding:14px 16px;min-height:92px;
+        border:1px solid rgba(255,255,255,.45);
+        box-shadow:0 8px 30px rgba(0,0,0,.10),inset 0 1px 0 rgba(255,255,255,.6);
+        transition:transform .3s ease, box-shadow .3s ease, border-color .3s ease;
+        margin-bottom:8px;overflow:hidden;
+    }}
+    /* gradient accent line at top */
+    .kpi-card-v2::before{{
+        content:"";position:absolute;top:0;left:0;right:0;height:4px;
+        background:linear-gradient(90deg,var(--kpi-g1,#F59E0B),var(--kpi-g2,#FBBF24));
+        border-radius:20px 20px 0 0;
+    }}
+    /* light reflection effect */
+    .kpi-card-v2::after{{
+        content:"";position:absolute;top:0;left:0;right:0;height:45%;
+        background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,0));
+        border-radius:20px 20px 0 0;pointer-events:none;
     }}
     .kpi-card-v2:hover{{
-        transform:translateY(-3px);
-        box-shadow:0 10px 28px rgba(0,0,0,.14);
+        transform:translateY(-4px);
+        box-shadow:0 16px 40px rgba(0,0,0,.16),inset 0 1px 0 rgba(255,255,255,.6);
+        border-color:rgba(255,255,255,.7);
     }}
     .kpi-v2-illust{{
-        flex:0 0 42%;max-width:60px;aspect-ratio:1/1;
+        flex:0 0 auto;width:52px;height:52px;border-radius:16px;
         display:flex;align-items:center;justify-content:center;
-        opacity:.92;
+        background:color-mix(in srgb,var(--kpi-g2,#FBBF24) 18%,transparent);
+        box-shadow:0 4px 14px color-mix(in srgb,var(--kpi-g2,#FBBF24) 35%,transparent);
+        color:var(--kpi-g2,#FBBF24);
     }}
-    .kpi-v2-content{{flex:1;min-width:0;}}
-    .kpi-v2-value{{font-size:clamp(22px,2.2vw,30px);font-weight:800;line-height:1.1;}}
-    .kpi-v2-label{{font-size:clamp(9px,0.85vw,11px);color:#64748b;font-weight:600;margin-top:2px;}}
-    .kpi-v2-sub{{font-size:clamp(8px,0.7vw,9.5px);color:#94a3b8;margin-top:3px;line-height:1.4;}}
+    .kpi-v2-content{{flex:1;min-width:0;position:relative;z-index:1;}}
+    .kpi-v2-value{{font-size:clamp(24px,2.4vw,32px);font-weight:800;line-height:1.1;}}
+    .kpi-v2-label{{font-size:clamp(9px,0.85vw,11px);color:#475569;font-weight:700;margin-top:2px;letter-spacing:.2px;}}
+    .kpi-v2-sub{{font-size:clamp(8px,0.7vw,9.5px);color:#7c8aa0;margin-top:3px;line-height:1.4;}}
+
+    /* ── KPI Icon Animations (GPU-friendly, subtle, enterprise) ────────── */
+    /* 1. Total Ideas — bulb dim/bright with soft glowing halo */
+    @keyframes kpiBulbGlow{{
+        0%,100%{{opacity:.55;filter:drop-shadow(0 0 2px rgba(251,191,36,.35));}}
+        50%{{opacity:1;filter:drop-shadow(0 0 9px rgba(251,191,36,.8));}}
+    }}
+    .kpi-anim-bulb{{animation:kpiBulbGlow 2s ease-in-out infinite;}}
+
+    /* 2. Completed — trophy golden glow intensifies/fades */
+    @keyframes kpiTrophyGlow{{
+        0%,100%{{opacity:.7;filter:drop-shadow(0 0 3px rgba(251,191,36,.35));}}
+        50%{{opacity:1;filter:drop-shadow(0 0 11px rgba(251,191,36,.85));}}
+    }}
+    .kpi-anim-trophy{{animation:kpiTrophyGlow 3s ease-in-out infinite;}}
+
+    /* 2b. Trophy shine sweep — subtle light passing across periodically */
+    @keyframes kpiShineSweep{{
+        0%{{transform:translateX(-22px);opacity:0;}}
+        15%{{opacity:.7;}}
+        55%{{transform:translateX(22px);opacity:0;}}
+        100%{{transform:translateX(22px);opacity:0;}}
+    }}
+    .kpi-shine{{animation:kpiShineSweep 3s ease-in-out infinite;}}
+
+    /* 3. Hours Saved — clock minute hand continuous rotation */
+    @keyframes kpiClockSpin{{
+        from{{transform:rotate(0deg);}}
+        to{{transform:rotate(360deg);}}
+    }}
+    .kpi-clock-hand{{transform-origin:32px 34px;animation:kpiClockSpin 12s linear infinite;}}
+
+    /* 4. ROI — growth arrow gently rises and returns */
+    @keyframes kpiGrowthRise{{
+        0%,100%{{transform:translateY(0);}}
+        50%{{transform:translateY(-3px);}}
+    }}
+    .kpi-anim-growth{{animation:kpiGrowthRise 1.5s ease-in-out infinite;}}
+
+    /* 4b. ROI — growth line subtly pulses */
+    @keyframes kpiGrowthPulse{{
+        0%,100%{{opacity:.45;}}
+        50%{{opacity:1;}}
+    }}
+    .kpi-growth-line{{animation:kpiGrowthPulse 1.5s ease-in-out infinite;}}
 
     /* ── Glassmorphism category panel (Automation / AI breakdown) ──────── */
     .glass-panel{{
@@ -747,33 +829,38 @@ def kpi_card(value, label, color, sub="", icon=""):
 
 # ── Premium illustrated KPI card (50/50 split: big illustration | value+trend) ──
 KPI_ILLUSTRATIONS = {
-    "total_ideas": """<svg viewBox="0 0 64 64" width="100%" height="100%">
+    "total_ideas": """<svg class="kpi-anim-bulb" viewBox="0 0 64 64" width="100%" height="100%">
+        <circle cx="32" cy="26" r="19" fill="rgba(251,191,36,.18)" opacity=".6"/>
         <circle cx="32" cy="26" r="16" fill="none" stroke="currentColor" stroke-width="3" opacity=".25"/>
         <path d="M32 10a16 16 0 0 1 9 29c-1.5 1-2 2.5-2 4v3H25v-3c0-1.5-.5-3-2-4a16 16 0 0 1 9-29z"
-              fill="currentColor" opacity=".9"/>
+              fill="currentColor" opacity=".95"/>
         <rect x="25" y="48" width="14" height="4" rx="2" fill="currentColor"/>
         <rect x="27" y="54" width="10" height="3" rx="1.5" fill="currentColor" opacity=".7"/>
         <line x1="32" y1="2" x2="32" y2="7" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
         <line x1="12" y1="10" x2="16" y2="14" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".6"/>
         <line x1="52" y1="10" x2="48" y2="14" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".6"/>
     </svg>""",
-    "trophy": """<svg viewBox="0 0 64 64" width="100%" height="100%">
-        <path d="M18 10h28v14a14 14 0 0 1-28 0V10z" fill="currentColor" opacity=".9"/>
+    "trophy": """<svg class="kpi-anim-trophy" viewBox="0 0 64 64" width="100%" height="100%">
+        <circle cx="32" cy="20" r="20" fill="rgba(251,191,36,.15)" opacity=".6"/>
+        <path d="M18 10h28v14a14 14 0 0 1-28 0V10z" fill="currentColor" opacity=".95"/>
         <path d="M18 14h-6a8 8 0 0 0 8 8" fill="none" stroke="currentColor" stroke-width="3"/>
         <path d="M46 14h6a8 8 0 0 1-8 8" fill="none" stroke="currentColor" stroke-width="3"/>
         <rect x="29" y="38" width="6" height="10" fill="currentColor"/>
         <rect x="20" y="48" width="24" height="6" rx="2" fill="currentColor" opacity=".85"/>
+        <rect class="kpi-shine" x="18" y="10" width="8" height="4" rx="2" fill="#fff" opacity=".7"/>
         <circle cx="32" cy="20" r="5" fill="#fff" opacity=".5"/>
     </svg>""",
     "clock": """<svg viewBox="0 0 64 64" width="100%" height="100%">
         <circle cx="32" cy="34" r="22" fill="none" stroke="currentColor" stroke-width="3.5" opacity=".9"/>
-        <line x1="32" y1="34" x2="32" y2="20" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+        <g class="kpi-clock-hand">
+            <line x1="32" y1="34" x2="32" y2="20" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+        </g>
         <line x1="32" y1="34" x2="42" y2="38" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
         <rect x="26" y="6" width="12" height="5" rx="2.5" fill="currentColor"/>
         <circle cx="32" cy="34" r="2.5" fill="currentColor"/>
     </svg>""",
-    "growth": """<svg viewBox="0 0 64 64" width="100%" height="100%">
-        <polyline points="8,48 22,34 32,42 56,14" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    "growth": """<svg class="kpi-anim-growth" viewBox="0 0 64 64" width="100%" height="100%">
+        <polyline class="kpi-growth-line" points="8,48 22,34 32,42 56,14" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
         <polygon points="56,14 56,24 46,14" fill="currentColor"/>
         <rect x="8" y="50" width="48" height="3" rx="1.5" fill="currentColor" opacity=".3"/>
         <circle cx="22" cy="34" r="3" fill="currentColor"/>
@@ -804,8 +891,14 @@ KPI_ILLUSTRATIONS = {
     </svg>""",
 }
 
-def premium_kpi_card(value, label, color, sub="", illustration="total_ideas", trend=None):
-    """50/50 illustration | value+trend KPI card."""
+def _premium_kpi_html(value, label, color, color2="", sub="", illustration="total_ideas",
+                      trend=None, count=None, count_format="plain", spark="", uid=""):
+    """Return the premium KPI card HTML string.
+
+    `color` / `color2` define the gradient accent bar & icon-container glow.
+    `count` / `count_format` enable the animated count-up (JS reads data-count).
+    `spark` is an SVG path drawn as a mini sparkline in the card's bottom-right.
+    Used by `premium_kpi_card` (st.markdown) and `_render_kpi_row` (iframe)."""
     trend_html = ""
     if trend is not None:
         up = trend >= 0
@@ -813,16 +906,215 @@ def premium_kpi_card(value, label, color, sub="", illustration="total_ideas", tr
         arrow = "▲" if up else "▼"
         trend_html = f'<div style="font-size:11px;font-weight:700;color:{tcol};margin-top:2px;">{arrow} {abs(trend):.1f}%</div>'
     svg = KPI_ILLUSTRATIONS.get(illustration, KPI_ILLUSTRATIONS["total_ideas"])
-    st.markdown(f"""
-    <div class="kpi-card-v2" style="border-top:4px solid {color};">
-      <div class="kpi-v2-illust" style="color:{color};">{svg}</div>
+    g2 = color2 if color2 else color
+    count_attr = f' data-count="{count}" data-format="{count_format}"' if count is not None else ""
+    spark_svg = ""
+    if spark:
+        spark_id = f"spark{uid}"
+        spark_svg = f'''
+        <svg class="kpi-spark" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="{spark_id}" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="{g2}" stop-opacity=".32"/>
+              <stop offset="100%" stop-color="{g2}" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path d="{spark}" fill="none" stroke="{g2}" stroke-width="1.5" stroke-linecap="round" opacity=".85"/>
+          <path d="{spark} L100,28 L0,28 Z" fill="url(#{spark_id})"/>
+        </svg>'''
+    return f"""
+    <div class="kpi-card-v2" style="--kpi-g1:{color};--kpi-g2:{g2};">
+      <div class="kpi-sweep"></div>
+      <div class="kpi-v2-illust">{svg}</div>
       <div class="kpi-v2-content">
-        <div class="kpi-v2-value" style="color:{color};">{value}</div>
+        <div class="kpi-v2-value" style="color:{g2};"{count_attr}>{value}</div>
         <div class="kpi-v2-label">{label}</div>
         {f'<div class="kpi-v2-sub">{sub}</div>' if sub else ''}
         {trend_html}
       </div>
-    </div>""", unsafe_allow_html=True)
+      {spark_svg}
+    </div>"""
+
+
+def premium_kpi_card(value, label, color, color2="", sub="", illustration="total_ideas", trend=None):
+    """Premium glassmorphism KPI card — single-row horizontal layout.
+    `color` / `color2` define the gradient accent line & icon container glow."""
+    st.markdown(_premium_kpi_html(value, label, color, color2, sub, illustration, trend),
+                unsafe_allow_html=True)
+
+
+def _render_kpi_row(total, completed, completed_pct, cust_hrs, int_hrs, cust_roi, int_roi):
+    """Render the 4 KPI cards as a single self-contained HTML iframe component.
+
+    Streamlit's st.markdown does not execute <script>, so the animated counters
+    (JS) run inside a st.components.v1.html iframe. The component also carries
+    its own CSS so the gradient accent bars, sparklines, glass sweep and hover
+    focus effects all apply inside the isolated iframe document. The cards stay
+    in ONE horizontal row (flex) and never change card height / layout."""
+    cards_html = (
+        '<div class="kpi-row">'
+        + _premium_kpi_html(total, "Total Ideas", "#f59e0b", "#fbbf24",
+                            "All registered ideas", "total_ideas",
+                            count=total, count_format="plain", uid="a",
+                            spark="M0,22 C12,20 18,14 26,16 C34,18 40,8 50,10 C60,12 66,6 74,8 C82,10 90,4 100,6")
+        + _premium_kpi_html(completed, "Completed", "#10b981", "#34d399",
+                            f"{completed_pct}% completion", "trophy",
+                            count=completed, count_format="plain", uid="b",
+                            spark="M0,24 C10,22 16,16 24,18 C32,20 38,12 48,14 C58,16 64,10 74,12 C82,13 90,8 100,9")
+        + _premium_kpi_html(f"{cust_hrs+int_hrs:,.0f}", "Saved Hours",
+                            "#14b8a6", "#2dd4bf", "Hours saved per year", "clock",
+                            count=cust_hrs+int_hrs, count_format="comma", uid="c",
+                            spark="M0,20 C10,18 16,22 26,18 C36,14 44,16 54,12 C64,8 72,10 82,7 C90,5 96,6 100,4")
+        + _premium_kpi_html(cust_roi+int_roi, "Saved ROI", "#c2410c", "#f97316",
+                            "Return on investment", "growth",
+                            count=cust_roi+int_roi, count_format="decimal", uid="d",
+                            spark="M0,26 C10,24 18,20 28,22 C38,24 46,16 56,18 C66,20 74,12 84,14 C92,15 97,10 100,8")
+        + '</div>'
+    )
+    css = """
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    *{margin:0;padding:0;box-sizing:border-box;}
+    .kpi-wrap{width:100%;font-family:'Inter',sans-serif;}
+    .kpi-row{display:flex;gap:14px;width:100%;}
+
+    /* ── Premium Glassmorphism card (Microsoft Fabric / Power BI / Vision Pro) ── */
+    .kpi-card-v2{
+      position:relative;flex:1;min-width:0;display:flex;align-items:center;gap:12px;
+      background:rgba(255,255,255,.15);
+      backdrop-filter:blur(16px) saturate(180%);
+      -webkit-backdrop-filter:blur(16px) saturate(180%);
+      border-radius:22px;padding:14px 16px;min-height:92px;
+      border:1px solid rgba(255,255,255,.25);
+      box-shadow:0 8px 32px rgba(0,0,0,.15),inset 0 1px 0 rgba(255,255,255,.6);
+      transition:transform .3s ease,box-shadow .3s ease,border-color .3s ease,background .3s ease,opacity .3s ease;
+      overflow:hidden;
+    }
+    /* gradient top accent bar (5px, full width, rounded, color-matched glow) */
+    .kpi-card-v2::before{
+      content:"";position:absolute;top:0;left:0;right:0;height:5px;
+      background:linear-gradient(90deg,var(--kpi-g1,#F59E0B),var(--kpi-g2,#FBBF24));
+      border-radius:22px 22px 0 0;
+      box-shadow:0 0 8px var(--kpi-g2,#FBBF24);
+      z-index:3;
+    }
+    /* top light reflection */
+    .kpi-card-v2::after{
+      content:"";position:absolute;top:0;left:0;right:0;height:45%;
+      background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,0));
+      border-radius:22px 22px 0 0;pointer-events:none;
+    }
+
+    /* ── 1. Total Ideas — bulb ON/OFF glow (2s, ease-in-out) ─────────────── */
+    @keyframes kpiBulbGlow{
+      0%,100%{opacity:.55;filter:drop-shadow(0 0 2px rgba(251,191,36,.35));}
+      50%{opacity:1;filter:drop-shadow(0 0 9px rgba(251,191,36,.85));}
+    }
+    .kpi-anim-bulb{animation:kpiBulbGlow 2s ease-in-out infinite;}
+
+    /* ── 2. Completed — trophy golden glow (3s) + shine sweep ────────────── */
+    @keyframes kpiTrophyGlow{
+      0%,100%{opacity:.7;filter:drop-shadow(0 0 3px rgba(251,191,36,.35));}
+      50%{opacity:1;filter:drop-shadow(0 0 11px rgba(251,191,36,.85));}
+    }
+    .kpi-anim-trophy{animation:kpiTrophyGlow 3s ease-in-out infinite;}
+    @keyframes kpiShineSweep{
+      0%{transform:translateX(-22px);opacity:0;}
+      15%{opacity:.7;}
+      55%{transform:translateX(22px);opacity:0;}
+      100%{transform:translateX(22px);opacity:0;}
+    }
+    .kpi-shine{animation:kpiShineSweep 3s ease-in-out infinite;}
+
+    /* ── 3. Hours Saved — clock minute hand continuous rotation ──────────── */
+    @keyframes kpiClockSpin{
+      from{transform:rotate(0deg);}
+      to{transform:rotate(360deg);}
+    }
+    .kpi-clock-hand{transform-origin:32px 34px;animation:kpiClockSpin 12s linear infinite;}
+
+    /* ── 4. ROI — growth arrow rises + line pulses (1.5s) ────────────────── */
+    @keyframes kpiGrowthRise{
+      0%,100%{transform:translateY(0);}
+      50%{transform:translateY(-3px);}
+    }
+    .kpi-anim-growth{animation:kpiGrowthRise 1.5s ease-in-out infinite;}
+    @keyframes kpiGrowthPulse{
+      0%,100%{opacity:.45;}
+      50%{opacity:1;}
+    }
+    .kpi-growth-line{animation:kpiGrowthPulse 1.5s ease-in-out infinite;}
+
+    /* ── glass reflection sweep — every 8s, GPU transform, elegant ──────── */
+    .kpi-sweep{
+      position:absolute;top:0;left:0;width:38%;height:100%;
+      background:linear-gradient(105deg,transparent,rgba(255,255,255,.22),transparent);
+      transform:translateX(-160%) skewX(-18deg);
+      animation:kpiSweep 8s ease-in-out infinite;
+      pointer-events:none;z-index:2;will-change:transform;
+    }
+    @keyframes kpiSweep{
+      0%{transform:translateX(-160%) skewX(-18deg);opacity:0;}
+      10%{opacity:1;}
+      45%{transform:translateX(340%) skewX(-18deg);opacity:0;}
+      100%{transform:translateX(340%) skewX(-18deg);opacity:0;}
+    }
+    .kpi-v2-illust{
+      flex:0 0 auto;width:52px;height:52px;border-radius:16px;
+      display:flex;align-items:center;justify-content:center;
+      background:color-mix(in srgb,var(--kpi-g2,#FBBF24) 18%,transparent);
+      box-shadow:0 4px 14px color-mix(in srgb,var(--kpi-g2,#FBBF24) 35%,transparent);
+      color:var(--kpi-g2,#FBBF24);
+      transition:transform .3s ease,box-shadow .3s ease;
+    }
+    .kpi-v2-content{flex:1;min-width:0;position:relative;z-index:1;}
+    .kpi-v2-value{font-size:clamp(24px,2.4vw,32px);font-weight:800;line-height:1.1;}
+    .kpi-v2-label{font-size:clamp(9px,0.85vw,11px);color:#475569;font-weight:700;margin-top:2px;letter-spacing:.2px;}
+    .kpi-v2-sub{font-size:clamp(8px,0.7vw,9.5px);color:#7c8aa0;margin-top:3px;line-height:1.4;}
+    /* mini sparkline — bottom-right, low visual weight, no axes/labels */
+    .kpi-spark{position:absolute;right:10px;bottom:8px;width:64px;height:24px;pointer-events:none;z-index:1;opacity:.6;transition:opacity .3s ease;}
+
+    /* ── hover focus: dim non-hovered siblings slightly, lift + brighten ── */
+    .kpi-row:hover .kpi-card-v2{opacity:.92;}
+    .kpi-row:hover .kpi-card-v2:hover{opacity:1;}
+    .kpi-card-v2:hover{
+      transform:translateY(-4px);
+      box-shadow:0 18px 48px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.7);
+      border-color:rgba(255,255,255,.55);
+      background:rgba(255,255,255,.28);
+      backdrop-filter:blur(20px) saturate(200%);
+    }
+    .kpi-card-v2:hover .kpi-v2-illust{
+      transform:scale(1.06);
+      box-shadow:0 6px 22px color-mix(in srgb,var(--kpi-g2,#FBBF24) 60%,transparent);
+    }
+    .kpi-card-v2:hover .kpi-spark{opacity:.9;}
+    """
+    js = """
+    (function(){
+      function easeOutCubic(t){return 1-Math.pow(1-t,3);}
+      function fmt(n,f){
+        if(f==='comma')return Math.round(n).toLocaleString('en-US');
+        if(f==='decimal')return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+        return Math.round(n).toString();
+      }
+      document.querySelectorAll('.kpi-v2-value[data-count]').forEach(function(el){
+        var target=parseFloat(el.getAttribute('data-count'));
+        var f=el.getAttribute('data-format')||'plain';
+        var dur=1800,start=null;
+        function step(ts){
+          if(!start)start=ts;
+          var p=Math.min((ts-start)/dur,1);
+          el.textContent=fmt(target*easeOutCubic(p),f);
+          if(p<1)requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+      });
+    })();
+    """
+    st.components.v1.html(
+        f"<div class='kpi-wrap'><style>{css}</style>{cards_html}<script>{js}</script></div>",
+        height=132, scrolling=False
+    )
 
 # ── Robotic arm SVG (Automation panel) — arm rotates/points per category idx
 def cnt_cat_status(cat, st_, ideas):
@@ -835,7 +1127,7 @@ CATEGORY_ICONS = {
     "Automation-Personal Productivity":     "⚙️",
     "Automation-Process Improvement":       "🔧",
     "Automation-Defined Product and Sales": "📦",
-    "Automation-Quality Enhancement":       "✅",
+    #"Automation-Quality Enhancement":       "✅",
     "AI-Personal Productivity":             "🧠",
     "AI-Process Improvement":               "🔄",
     "AI-Defined Product and Sales":         "📊",
@@ -1094,8 +1386,7 @@ def _render_kanban_nesting_ui(ideas):
 # ══════════════════════════════════════════════════════════════════════════════
 def page_login():
     t = THEMES.get(ss("theme","ALTEN Red & Blue"), THEMES["ALTEN Red & Blue"])
-    dark_bg = ss("theme","") == "Midnight Dark"
-    surface = "#2a61b8" if dark_bg else "#CACDE3"
+    surface = "#CACDE3"
 
     if ss("_session_expired"):
         st.warning("⚠️ Session expired due to 5 minutes of inactivity. Please login again.")
@@ -1295,52 +1586,53 @@ def page_pl_assignment():
     users     = get_users()
     engineers = [u["email"] for u in users if u["role"]=="automation engineer"]
 
-    # ── Engineer load bar chart — top right ──────────────────────────────
     left_col, right_col = st.columns([2, 1])
 
     with right_col:
         st.markdown("<span style='font-size:13px;font-weight:600;'>📊 Engineer Task Load</span>", unsafe_allow_html=True)
         if engineers:
-            MAX_TASKS = 10   # max expected tasks — gauge full at 10
+            load_rows = []
             for eng in engineers:
                 active = len([
                     i for i in all_ideas
-                    if i.get("assigned_engineer")==eng
-                    and i.get("status") in {"Assigned","WIP","UAT","Hold/Park"}
+                    if i.get("assigned_engineer") == eng
+                    and i.get("status") in {"Assigned", "WIP", "UAT", "Hold/Park"}
                 ])
-                eng_label = eng.split("@")[0].replace("."," ").title()
-                load_pct  = min(active / MAX_TASKS, 1.0) * 100
-                # colour: green→amber→red based on load
-                needle_color = ("#059669" if load_pct < 40
-                                else "#b45309" if load_pct < 75
-                                else "#dc2626")
-                gauge_opt = {
-                    "series":[{
-                        "type":"gauge",
-                        "radius":"85%",
-                        "startAngle":200,"endAngle":-20,
-                        "min":0,"max":MAX_TASKS,
-                        "splitNumber":5,
-                        "axisLine":{
-                            "lineStyle":{
-                                "width":10,
-                                "color":[[0.4,"#059669"],[0.75,"#b45309"],[1,"#dc2626"]]
-                            }
+                load_rows.append({
+                    "Engineer": eng.split("@")[0].replace(".", " ").title(),
+                    "Active Tasks": active,
+                })
+            if load_rows:
+                chart_opt = {
+                    "tooltip": {"trigger": "axis"},
+                    "grid": {"left": "8%", "right": "6%", "top": "8%", "bottom": "18%", "containLabel": True},
+                    "xAxis": {
+                        "type": "category",
+                        "data": [r["Engineer"] for r in load_rows],
+                        "axisLabel": {"rotate": 45, "fontSize": 10},
+                    },
+                    "yAxis": {
+                        "type": "value",
+                        "min": 0,
+                        "splitLine": {"lineStyle": {"color": "#e5e7eb"}},
+                    },
+                    "series": [{
+                        "type": "bar",
+                        "barWidth": "42%",
+                        "data": [r["Active Tasks"] for r in load_rows],
+                        "itemStyle": {"color": "#2563eb"},
+                        "label": {
+                            "show": True,
+                            "position": "top",
+                            "formatter": "{c}",
+                            "color": "#111827",
+                            "fontSize": 11,
                         },
-                        "pointer":{"itemStyle":{"color":"auto"},"length":"60%","width":4},
-                        "axisTick":{"distance":-15,"length":6,"lineStyle":{"color":"#fff","width":1}},
-                        "splitLine":{"distance":-20,"length":12,"lineStyle":{"color":"#fff","width":2}},
-                        "axisLabel":{"color":"inherit","distance":18,"fontSize":8},
-                        "detail":{
-                            "valueAnimation":True,
-                            "formatter":f"{active} tasks",
-                            "color":"inherit","fontSize":11,"offsetCenter":[0,"60%"]
-                        },
-                        "title":{"offsetCenter":[0,"85%"],"fontSize":9,"color":"#64748b"},
-                        "data":[{"value":active,"name":eng_label}],
                     }]
                 }
-                st_echarts(gauge_opt, height="160px", key=f"gauge_{eng}")
+                st_echarts(chart_opt, height="340px", key="engineer_task_load_chart")
+            else:
+                st.info("No active task counts available.")
         else:
             st.info("No automation engineers configured.")
 
@@ -1401,13 +1693,16 @@ def page_pl_assignment():
     st.divider()
     st.markdown("#### 📅 Engineer Workload & Sprint Schedule")
     st.caption("Active tasks per engineer ordered by auto-priority (Customer → ROI → FIFO), with rolling 2-week sprint dates.")
+
     all_eng = [u["email"] for u in users if u["role"]=="automation engineer"]
     if not all_eng:
         st.info("No automation engineers configured — add them in Admin.")
     else:
-        sel_engs = st.multiselect("Select Engineer(s) to view", all_eng,
-                                  default=None, placeholder="Choose one or more engineers…")
         import pandas as pd
+        st.markdown("<div style='margin-top:4px; margin-bottom:8px; color:#64748b; font-size:12px;'>Select engineer(s) to view the sprint queue below.</div>", unsafe_allow_html=True)
+        sel_engs = st.multiselect("Select Engineer(s) to view", all_eng,
+                                  default=all_eng, placeholder="Choose one or more engineers…")
+
         for eng in (sel_engs or []):
             queue = engineer_queue(all_ideas, eng)
             with st.expander(f"👷 {eng}  —  {len(queue)} active task(s)", expanded=True):
@@ -1584,6 +1879,15 @@ def page_approval():
 # ══════════════════════════════════════════════════════════════════════════════
 def page_dashboard():
     page_header("Dashboard ")
+
+    # ── VIEW SELECTOR (segmented control) ─────────────────────────────────
+    dashboard_view = st.segmented_control(
+        "Explore Views",
+        ["Overview", "Analytics", "Idea Management", "Workflow"],
+        default="Overview",
+        key="dashboard_view",
+    )
+
     all_ideas_raw = get_all()
     if not all_ideas_raw:
         st.info("No ideas yet.")
@@ -1612,27 +1916,26 @@ def page_dashboard():
     all_regs = sorted({i.get("region","")   for i in all_ideas_raw if i.get("region","")})
     all_cats = CATEGORIES
 
-    fc1, fc2, fc3, fc4, fc5 = st.columns([1.0, 1.0, 1.0, 0.45, 0.6])
-    with fc1:
-        f_cat = st.multiselect("Category", all_cats, key="f_cat",
-                               placeholder="All categories", label_visibility="collapsed")
-        st.caption("🗂 Category")
-    with fc2:
-        f_pl  = st.multiselect("PL/SPL", all_pls, key="f_pl",
-                               placeholder="All PLs", label_visibility="collapsed")
-        st.caption("🧑‍💼 PL / SPL")
-    with fc3:
-        f_reg = st.multiselect("Region", all_regs, key="f_reg",
-                               placeholder="All regions", label_visibility="collapsed")
-        st.caption("🌍 Region")
-    with fc4:
-        st.markdown("<div style='height:36px;'></div>", unsafe_allow_html=True)
-        if st.button("🔄 Reset", use_container_width=True, key="reset_filters"):
-            for k in ["f_cat","f_pl","f_reg"]:
-                st.session_state[k] = []
-            st.rerun()
-        st.caption("Reset filters")
+    for k in ["f_cat", "f_pl", "f_reg"]:
+        if k not in st.session_state:
+            st.session_state[k] = []
 
+    # Persistent dashboard filter row (visible across all dashboard views)
+    with st.container(border=True):
+        fc1, fc2, fc3, fc4 = st.columns([1.0, 1.0, 1.0, 0.5])
+        with fc1:
+            st.multiselect("Category", all_cats, key="f_cat",
+                           placeholder="All categories", label_visibility="collapsed")
+        with fc2:
+            st.multiselect("PL/SPL", all_pls, key="f_pl",
+                           placeholder="All PLs", label_visibility="collapsed")
+        with fc3:
+            st.multiselect("Region", all_regs, key="f_reg",
+                           placeholder="All regions", label_visibility="collapsed")
+
+    f_cat = st.session_state.get("f_cat", [])
+    f_pl  = st.session_state.get("f_pl", [])
+    f_reg = st.session_state.get("f_reg", [])
 
     # Apply filters — interlinked (all three narrow the same set)
     ideas = all_ideas_raw
@@ -1667,123 +1970,71 @@ def page_dashboard():
     completed = cnt("Completed")
     completed_pct = round(completed / total * 100, 1) if total else 0.0
 
-    # ── ROW 1: Premium Illustrated KPI Cards ───────────────────────────────
-    st.markdown("##### 📦 Total projected Hrs Saved / yr")
-    auto_total_ideas = len([i for i in ideas if i.get("automation_category") in AUTOMATION_CATS])
-    ai_total_ideas   = len([i for i in ideas if i.get("automation_category") in AI_CATS])
-    proj_count       = len({i.get("project","") for i in ideas if i.get("project")})
-    auto_roi = round(sum(float(i.get("roi",0) or 0) for i in ideas if i.get("automation_category","") in AUTOMATION_CATS),1)
-    ai_roi = round(sum(float(i.get("roi",0) or 0) for i in ideas if i.get("automation_category","") in AI_CATS),1)
+    # ══════════════════════════════════════════════════════════════════════
+    # PAGE 1 — OVERVIEW
+    # ══════════════════════════════════════════════════════════════════════
+    if dashboard_view == "Overview":
+        # ── KPI METRICS (single horizontal row — enhanced: animated counters,
+        #    gradient top accent bars, mini sparklines, glass sweep, hover focus) ──
+        with st.container(border=True):
+            _render_kpi_row(total, completed, completed_pct, cust_hrs, int_hrs, cust_roi, int_roi)
 
-    icon_total = KPI_ILLUSTRATIONS["total_ideas"]
-    icon_completed = KPI_ILLUSTRATIONS["trophy"]
-    icon_hours = KPI_ILLUSTRATIONS["clock"]
-    icon_roi = KPI_ILLUSTRATIONS["growth"]
-    st.markdown(f"""
-    <style>
-      .km-board{{position:relative;overflow:hidden;margin-bottom:22px;border-radius:24px;border:1px solid rgba(255,255,255,.12);background:rgba(15,23,42,.85);box-shadow:0 18px 50px rgba(15,23,42,.25);}}
-      .km-track{{display:flex;gap:12px;width:max-content;animation:km-scroll-left 20s linear infinite;animation-play-state:running;}}
-      .km-board:hover .km-track{{animation-play-state:paused;}}
-      .km-board.paused .km-track{{animation-play-state:paused;}}
-      .km-copy{{display:flex;gap:12px;}}
-      .km-card{{flex:0 0 260px;min-width:260px;padding:18px 20px;border-radius:18px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);display:grid;grid-template-columns:60px 1fr;gap:12px;min-height:140px;align-items:start;}}
-      .km-icon{{width:56px;height:90px;flex:0 0 56px;display:grid;place-items:center;background:rgba(255,255,255,.1);border-radius:18px;}}
-      .km-icon svg{{width:100%;height:100%;}}
-      .km-text{{display:grid;grid-template-rows:auto 1fr auto;gap:8px;min-height:100%;}}
-      .km-header{{font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:rgba(255,255,255,.75);font-weight:700;}}
-      .km-card-body{{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}}
-      .km-value{{font-size:36px;font-weight:900;color:#fff;line-height:1.05;}}
-      .km-pct{{font-size:12px;font-weight:700;color:#f8fafc;opacity:.95;white-space:nowrap;}}
-      .km-footer{{font-size:11px;color:rgba(255,255,255,.68);line-height:1.4;min-height:18px;}}
-      @keyframes km-scroll-left{{0%{{transform:translateX(0);}}100%{{transform:translateX(-50%);}}}}
-    </style>
-    <div class="km-board" id="km-board">
-      <div class="km-track" id="km-track">
-        <div class="km-copy">
-          <div class="km-card"><div class="km-icon" style="color:#facc15;">{icon_total}</div><div class="km-text"><div class="km-header">Total Ideas</div><div class="km-card-body"><div class="km-value">{total}</div><div class="km-pct"></div></div><div class="km-footer"></div></div></div>
-          <div class="km-card"><div class="km-icon" style="color:#059669;">{icon_completed}</div><div class="km-text"><div class="km-header">Completed</div><div class="km-card-body"><div class="km-value">{completed}</div><div class="km-pct"></div></div><div class="km-footer"></div></div></div>
-          <div class="km-card"><div class="km-icon" style="color:#0d9488;">{icon_hours}</div><div class="km-text"><div class="km-header">Total Projected Hrs Saved / yr</div><div class="km-card-body"><div class="km-value">{cust_hrs+int_hrs:,.0f}</div><div class="km-pct"></div></div><div class="km-footer">Customer + Internal hours</div></div></div>
-          <div class="km-card"><div class="km-icon" style="color:#b45309;">{icon_roi}</div><div class="km-text"><div class="km-header">Total ROI</div><div class="km-card-body"><div class="km-value">{cust_roi+int_roi}</div><div class="km-pct"></div></div><div class="km-footer">Customer + Internal ROI</div></div></div>
-        </div>
-        <div class="km-copy">
-          <div class="km-card"><div class="km-icon" style="color:#facc15;">{icon_total}</div><div class="km-text"><div class="km-header">Total Ideas</div><div class="km-card-body"><div class="km-value">{total}</div><div class="km-pct"></div></div><div class="km-footer"></div></div></div>
-          <div class="km-card"><div class="km-icon" style="color:#059669;">{icon_completed}</div><div class="km-text"><div class="km-header">Completed</div><div class="km-card-body"><div class="km-value">{completed}</div><div class="km-pct"></div></div><div class="km-footer"></div></div></div>
-          <div class="km-card"><div class="km-icon" style="color:#0d9488;">{icon_hours}</div><div class="km-text"><div class="km-header">Total Hrs Projected Saved / yr</div><div class="km-card-body"><div class="km-value">{cust_hrs+int_hrs:,.0f}</div><div class="km-pct"></div></div><div class="km-footer">Customer + Internal hours</div></div></div>
-          <div class="km-card"><div class="km-icon" style="color:#b45309;">{icon_roi}</div><div class="km-text"><div class="km-header">Total ROI</div><div class="km-card-body"><div class="km-value">{cust_roi+int_roi}</div><div class="km-pct"></div></div><div class="km-footer">Customer + Internal ROI</div></div></div>
-        </div>
-      </div>
-    </div>
-    <script>
-      const board = document.getElementById('km-board');
-      let lastTap = 0;
-      if (board) {{
-        board.addEventListener('dblclick', function() {{ board.classList.toggle('paused'); }});
-        board.addEventListener('touchend', function(event) {{
-          const currentTime = new Date().getTime();
-          const tapLength = currentTime - lastTap;
-          if (tapLength < 500 && tapLength > 0) {{
-            board.classList.toggle('paused');
-            event.preventDefault();
-          }}
-          lastTap = currentTime;
-        }});
-      }}
-    </script>
-    """, unsafe_allow_html=True)
+        # ── AUTOMATION & AI CATEGORY BREAKDOWN (canvas resized to 380) ─────
+        st.markdown("##### 🤖 Automation & AI Category Breakdown")
+        auto_total_ideas = len([i for i in ideas if i.get("automation_category") in AUTOMATION_CATS])
+        ai_total_ideas   = len([i for i in ideas if i.get("automation_category") in AI_CATS])
+        proj_count       = len({i.get("project","") for i in ideas if i.get("project")})
+        auto_roi = round(sum(float(i.get("roi",0) or 0) for i in ideas if i.get("automation_category","") in AUTOMATION_CATS),1)
+        ai_roi = round(sum(float(i.get("roi",0) or 0) for i in ideas if i.get("automation_category","") in AI_CATS),1)
 
-    # second KPI row removed
+        auto_total = len([i for i in ideas if i.get("automation_category","") in AUTOMATION_CATS])
+        ai_total   = len([i for i in ideas if i.get("automation_category","") in AI_CATS])
+        auto_done  = len([i for i in ideas if i.get("automation_category","") in AUTOMATION_CATS and i.get("status")=="Completed"])
+        ai_done    = len([i for i in ideas if i.get("automation_category","") in AI_CATS and i.get("status")=="Completed"])
+        auto_wip   = len([i for i in ideas if i.get("automation_category","") in AUTOMATION_CATS and i.get("status")=="WIP"])
+        ai_wip     = len([i for i in ideas if i.get("automation_category","") in AI_CATS and i.get("status")=="WIP"])
+        auto_roi   = round(sum(float(i.get("roi",0) or 0) for i in ideas if i.get("automation_category","") in AUTOMATION_CATS),1)
+        ai_roi     = round(sum(float(i.get("roi",0) or 0) for i in ideas if i.get("automation_category","") in AI_CATS),1)
 
-    # -- ROW 2: Cinematic Automation | AI Canvas (exact reference image match) --
-    st.markdown("##### \U0001f916 Automation &amp; AI Category Breakdown")
-
-    auto_total = len([i for i in ideas if i.get("automation_category","") in AUTOMATION_CATS])
-    ai_total   = len([i for i in ideas if i.get("automation_category","") in AI_CATS])
-    auto_done  = len([i for i in ideas if i.get("automation_category","") in AUTOMATION_CATS and i.get("status")=="Completed"])
-    ai_done    = len([i for i in ideas if i.get("automation_category","") in AI_CATS and i.get("status")=="Completed"])
-    auto_wip   = len([i for i in ideas if i.get("automation_category","") in AUTOMATION_CATS and i.get("status")=="WIP"])
-    ai_wip     = len([i for i in ideas if i.get("automation_category","") in AI_CATS and i.get("status")=="WIP"])
-    auto_roi   = round(sum(float(i.get("roi",0) or 0) for i in ideas if i.get("automation_category","") in AUTOMATION_CATS),1)
-    ai_roi     = round(sum(float(i.get("roi",0) or 0) for i in ideas if i.get("automation_category","") in AI_CATS),1)
-
-    selected_category = ""
-    if hasattr(st, "query_params"):
-        qp = st.query_params
-        if qp and qp.get("selected_category"):
-            selected_category = qp.get("selected_category", [""])[0]
-    if selected_category and selected_category not in AUTOMATION_CATS + AI_CATS:
         selected_category = ""
+        if hasattr(st, "query_params"):
+            qp = st.query_params
+            if qp and qp.get("selected_category"):
+                selected_category = qp.get("selected_category", [""])[0]
+        if selected_category and selected_category not in AUTOMATION_CATS + AI_CATS:
+            selected_category = ""
 
-    def _cat_stats(cat):
-        subset = [i for i in ideas if i.get("automation_category") == cat]
-        total = len(subset)
-        completed = len([i for i in subset if i.get("status") == "Completed"])
-        wip = len([i for i in subset if i.get("status") == "WIP"])
-        uat = len([i for i in subset if i.get("status") == "UAT"])
-        roi = round(sum(float(i.get("roi",0) or 0) for i in subset),1)
-        hrs = round(sum(idea_hours(i) for i in subset),1)
-        return total, completed, wip, uat, roi, hrs
+        def _cat_stats(cat):
+            subset = [i for i in ideas if i.get("automation_category") == cat]
+            total = len(subset)
+            completed = len([i for i in subset if i.get("status") == "Completed"])
+            wip = len([i for i in subset if i.get("status") == "WIP"])
+            uat = len([i for i in subset if i.get("status") == "UAT"])
+            roi = round(sum(float(i.get("roi",0) or 0) for i in subset),1)
+            hrs = round(sum(idea_hours(i) for i in subset),1)
+            return total, completed, wip, uat, roi, hrs
 
-    def _category_card(cat):
-        count = len([i for i in ideas if i.get("automation_category") == cat])
-        label = cat.split("-",1)[-1]
-        icon = CATEGORY_ICONS.get(cat, "•")
-        active = "selected" if selected_category == cat else ""
-        return (
-            f'<div class="category-card {active}" onclick="selectCategory(\'{cat}\')">'
-            f'<div class="category-icon">{icon}</div>'
-            f'<div class="category-count">{count}</div>'
-            f'<div class="category-dash">-</div>'
-            f'<div class="category-name">{label}</div>'
-            '</div>'
-        )
+        def _category_card(cat):
+            count = len([i for i in ideas if i.get("automation_category") == cat])
+            label = cat.split("-",1)[-1]
+            icon = CATEGORY_ICONS.get(cat, "•")
+            active = "selected" if selected_category == cat else ""
+            return (
+                f'<div class="category-card {active}" onclick="selectCategory(\'{cat}\')">'
+                f'<div class="category-icon">{icon}</div>'
+                f'<div class="category-count">{count}</div>'
+                f'<div class="category-dash">-</div>'
+                f'<div class="category-name">{label}</div>'
+                '</div>'
+            )
 
-    left_category_html = "".join(_category_card(cat) for cat in AUTOMATION_CATS)
-    right_category_html = "".join(_category_card(cat) for cat in AI_CATS)
+        left_category_html = "".join(_category_card(cat) for cat in AUTOMATION_CATS)
+        right_category_html = "".join(_category_card(cat) for cat in AI_CATS)
 
-    if selected_category:
-        total, completed, wip, uat, roi, hrs = _cat_stats(selected_category)
-        selected_label = selected_category.split("-",1)[-1]
-        selected_detail_html = f'''
+        if selected_category:
+            total, completed, wip, uat, roi, hrs = _cat_stats(selected_category)
+            selected_label = selected_category.split("-",1)[-1]
+            selected_detail_html = f'''
           <div class="detail-overlay">
             <div class="detail-card">
               <div class="detail-title">{selected_label}</div>
@@ -1792,22 +2043,22 @@ def page_dashboard():
               <div class="detail-sub">{completed} Done · {wip} WIP · {uat} UAT</div>
             </div>
           </div>'''
-    else:
-        selected_detail_html = '''
+        else:
+            selected_detail_html = '''
           <div class="detail-overlay">
             <div class="detail-card detail-card--circle">
               <img class="detail-image" src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRk5gF2yYSpS4q60kNhN4hLGJ2aoRoseCFJAVrTfN8FSA&s=10" alt="Select a category" />
             </div>
           </div>'''
 
-    _canvas_html = f"""<!DOCTYPE html>
+        _canvas_html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"/>
 <script type="module" src="https://unpkg.com/@splinetool/viewer@1.0.77/build/spline-viewer.js"></script>
 <style>
 *{{margin:0;padding:0;box-sizing:border-box;}}
 html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'Inter',sans-serif;}}
 #scene{{
-  position:relative;width:100%;height:420px;
+  position:relative;width:100%;height:380px;
   background:radial-gradient(ellipse at 20% 70%,#1a0240 0%,#06091a 45%,#030710 100%);
   overflow:hidden;display:flex;align-items:center;justify-content:space-between;padding:0 36px;
 }}
@@ -1981,76 +2232,156 @@ html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'I
 }})();
 </script>
 </body></html>"""
-    st.components.v1.html(_canvas_html, height=440, scrolling=False)
+        st.components.v1.html(_canvas_html, height=380, scrolling=False)
 
-    # ── ROW 3: Charts row (Status BAR chart + Customer pie + clean Hours/Project) ─
-    st.markdown("##### 📈 Charts")
-    ch1, ch2, ch3 = st.columns(3)
+    # ══════════════════════════════════════════════════════════════════════
+    # PAGE 2 — ANALYTICS
+    # ══════════════════════════════════════════════════════════════════════
+    elif dashboard_view == "Analytics":
+        
+        st.markdown("##### 📈 Analytics")
+        
+        
+        chart1, chart2, chart3 = st.columns([1, 1.2, 1])
+        
 
-    with ch1:
-        st.markdown("<span style='font-size:clamp(10px,1vw,13px);font-weight:600;'>Ideas by Status</span>", unsafe_allow_html=True)
-        status_labels = [s for s in STATUSES]
-        status_vals   = [cnt(s) for s in STATUSES]
-        status_cols   = [STATUS_COLORS.get(s,"#888") for s in STATUSES]
-        st_echarts({
-            "tooltip":{"trigger":"axis","axisPointer":{"type":"shadow"}},
-            "grid":{"left":"3%","right":"4%","bottom":"22%","containLabel":True},
-            "xAxis":{"type":"category","data":status_labels,
-                     "axisLabel":{"rotate":30,"fontSize":8,"interval":0}},
-            "yAxis":{"type":"value","name":"Ideas","nameTextStyle":{"fontSize":8}},
-            "series":[{
-                "type":"bar","data":[{"value":v,"itemStyle":{"color":c}} for v,c in zip(status_vals,status_cols)],
-                "barMaxWidth":34,"animationDuration":700,"animationEasing":"elasticOut",
-                "label":{"show":True,"position":"top","fontSize":9,"fontWeight":700},
-            }]
-        }, height="220px")
-
-    with ch2:
-        st.markdown("<span style='font-size:clamp(10px,1vw,13px);font-weight:600;'>Customer — Count &amp; ROI</span>", unsafe_allow_html=True)
-        cust_data = {}
-        for i in ideas:
-            c = i.get("customer","") or "Unknown"
-            if c not in cust_data: cust_data[c] = {"count":0,"roi":0.0}
-            cust_data[c]["count"] += 1
-            cust_data[c]["roi"]   += float(i.get("roi",0) or 0)
-        cust_palette = ["#E30613","#00AEEF","#7c3aed","#059669","#0d9488","#b45309","#0369a1"]
-        c_pie_cnt = [{"value":v["count"],
-                      "name":f'{k}\n({round(v["roi"],1)} ROI)',
-                      "itemStyle":{"color":cust_palette[idx%len(cust_palette)]}}
-                     for idx,(k,v) in enumerate(cust_data.items())]
-        st_echarts({
-            "tooltip":{"trigger":"item","formatter":"{b}: {c} ideas ({d}%)"},
-            "series":[{"type":"pie","radius":["35%","65%"],"data":c_pie_cnt,
-                       "label":{"fontSize":9,"formatter":"{b}"},
-                       "labelLine":{"length":8,"length2":5}}]
-        }, height="220px")
-
-    with ch3:
-        st.markdown("<span style='font-size:clamp(10px,1vw,13px);font-weight:600;'>Ideas by Project</span>", unsafe_allow_html=True)
-        proj_counts = {}
-        for i in ideas:
-            proj = i.get("project","")
-            if not proj:                  # skip only ideas missing a project
-                continue
-            proj_counts[proj] = proj_counts.get(proj, 0) + 1
-        if proj_counts:
+        with chart1:
+            # ── Status Pie (moved from original) ──
+            st.markdown("<span style='font-size:clamp(10px,1vw,13px);font-weight:600;'>Ideas by Status</span>", unsafe_allow_html=True)
+            status_labels = [s for s in STATUSES]
+            status_vals   = [cnt(s) for s in STATUSES]
+            status_cols   = [STATUS_COLORS.get(s, "#888") for s in STATUSES]
             st_echarts({
-                "tooltip":{"trigger":"axis"},
-                "grid":{"left":"3%","right":"4%","bottom":"28%","containLabel":True},
-                "xAxis":{"type":"category","data":list(proj_counts.keys()),
-                         "axisLabel":{"rotate":30,"fontSize":8,"interval":0}},
-                "yAxis":{"type":"value","name":"Ideas","nameTextStyle":{"fontSize":8}},
-                "series":[{"type":"bar","data":[v for v in proj_counts.values()],
-                           "itemStyle":{"color":"#7c3aed"},"barMaxWidth":32,
-                           "label":{"show":True,"position":"top","fontSize":9,"fontWeight":700,"color":"#ffffff"}}]},
-                height="220px")
-        else:
-            st.caption("No projects with valid idea count data yet.")
+                "tooltip": {"trigger": "item", "formatter": "{b}: {c} ({d}%)"},
+                "series": [{
+                    "type": "pie",
+                    "radius": ["35%", "72%"],
+                    "center": ["50%", "42%"],
+                    "data": [{"value": v, "name": l, "itemStyle": {"color": c}} for v, l, c in zip(status_vals, status_labels, status_cols)],
+                    "label": {
+                        "show": True,
+                        "fontSize": 9,
+                        "formatter": "{b}: {c}",
+                        "color": "#111827",
+                    },
+                    "labelLine": {"length": 5, "length2": 3},
+                }]
+            }, height="320px")
 
-    # ── ROW 4: Ideation Tree + Region chart ──────────────────────────────
-    tr_col, wl_col = st.columns([1.4, 1])
+        with chart2:
+            # ── Project → Customer Hierarchy (grouped BAR chart — Idea Count per Customer per Project) ──
+            st.markdown("<span style='font-size:clamp(10px,1vw,13px);font-weight:600;'>Project → Customer (Hierarchy)</span>", unsafe_allow_html=True)
+            project_customer_map = {}
+            project_customer_roi = {}
+            for i in ideas:
+                project = i.get("project", "") or "Others"
+                customer = i.get("customer", "") or "Unknown"
+                project_customer_map.setdefault(project, {}).setdefault(customer, 0)
+                project_customer_map[project][customer] += 1
+                project_customer_roi.setdefault(project, {}).setdefault(customer, 0.0)
+                project_customer_roi[project][customer] += float(i.get("roi",0) or 0)
 
-    with tr_col:
+            projects  = list(project_customer_map.keys())
+            customers = []
+            for pc in project_customer_map.values():
+                for c in pc.keys():
+                    if c not in customers:
+                        customers.append(c)
+
+            CUSTOMER_BAR_COLORS = {
+                "Rolls-Royce": "#1a4fad",
+                "Unknown": "#64748b",
+            }
+            series = []
+            for c in customers:
+                color = CUSTOMER_BAR_COLORS.get(c, "#0ea5e9")
+                series.append({
+                    "name": c,
+                    "type": "bar",
+                    "data": [project_customer_map.get(p, {}).get(c, 0) for p in projects],
+                    "itemStyle": {"color": color},
+                    "label": {"show": True, "position": "top", "fontSize": 9, "color": "#111827"},
+                })
+
+            st_echarts({
+                "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
+                "legend": {"bottom": 0, "textStyle": {"fontSize": 9}},
+                "grid": {"left": "6%", "right": "4%", "top": "8%", "bottom": "18%", "containLabel": True},
+                "xAxis": {
+                    "type": "category",
+                    "data": projects,
+                    "axisLabel": {"rotate": 20, "fontSize": 9},
+                },
+                "yAxis": {",type": "value", "minInterval": 1},
+                "series": series,
+            }, height="320px")
+
+        with chart3:
+            # ── Region World Map (moved from original) ──
+            st.markdown("<span style='font-size:clamp(10px,1vw,13px);font-weight:600;'>Region-World Map</span>", unsafe_allow_html=True)
+            region_data = {}
+            for i in ideas:
+                r = (i.get("region","") or "").strip()
+                if not r:
+                    continue
+                key = r.upper()
+                if key not in region_data:
+                    region_data[key] = {"count":0,"roi":0.0}
+                region_data[key]["count"] += 1
+                region_data[key]["roi"] += float(i.get("roi",0) or 0)
+
+            no_region_count = len([i for i in ideas if not (i.get("region","") or "").strip()])
+            region_counts = {
+                "India": region_data.get("INDIA", {"count":0})["count"],
+                "USA": region_data.get("USA", {"count":0})["count"],
+                "UK": region_data.get("UK", {"count":0})["count"],
+                "Germany": region_data.get("GERMANY", {"count":0})["count"],
+            }
+            max_count = max(region_counts.values()) or 1
+
+            def _highlight_size(c):
+                return 90 + round((c / max_count) * 70) if c else 60
+
+            REGION_POS = {
+                "India": {"top": "37.8%", "left": "71.9%"},
+                "USA": {"top": "28.3%", "left": "22.8%"},
+                "UK": {"top": "20.0%", "left": "49.4%"},
+                "Germany": {"top": "21.7%", "left": "52.8%"},
+            }
+            active_regions = {k: v for k, v in region_counts.items() if v > 0}
+            pins_html = "".join(
+                f'<div class="region-highlight" style="top:{REGION_POS[k]["top"]};left:{REGION_POS[k]["left"]};width:{_highlight_size(v)}px;height:{_highlight_size(v)}px;"></div>'
+                f'<div class="region-pin" style="top:{REGION_POS[k]["top"]};left:{REGION_POS[k]["left"]};" title="{k}: {v} idea(s)">{v}</div>'
+                for k, v in active_regions.items()
+            )
+
+            map_html = f"""
+            <style>
+              .region-map-shell {{position:relative;width:100%;aspect-ratio:1/1;max-height:320px;min-height:260px;border-radius:22px;overflow:hidden;background:#0b1222;border:1px solid rgba(255,255,255,.08);box-shadow:0 20px 50px rgba(0,0,0,.25);}}
+              .region-map-shell .region-map-bg {{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.85;filter:invert(1) brightness(1.6);z-index:0;}}
+              .region-map-shell .region-overlay {{position:relative;z-index:1;padding:16px;display:grid;grid-template-rows:auto 1fr;gap:12px;}}
+              .region-map-shell .region-header {{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:0 6px;}}
+              .region-map-shell .region-title {{font-size:14px;font-weight:700;color:#f8fafc;}}
+              .region-map-shell .region-subtitle {{font-size:12px;color:rgba(248,250,252,.72);}}
+              .region-map-shell .region-highlight {{position:absolute;border-radius:999px;transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(250,204,21,.55) 0%,rgba(250,204,21,.18) 55%,rgba(250,204,21,0) 75%);animation:region-pulse 2.4s ease-in-out infinite;pointer-events:none;z-index:2;}}
+              @keyframes region-pulse {{0%,100% {{opacity:.75;}} 50% {{opacity:1;}}}}
+              .region-map-shell .region-pin {{position:absolute;transform:translate(-50%,-50%);font-size:13px;font-weight:800;color:#facc15;text-shadow:0 0 5px rgba(0,0,0,.95),0 0 2px rgba(0,0,0,.95);pointer-events:none;z-index:3;}}
+            </style>
+            <div class="region-map-shell">
+              <img class="region-map-bg" src="https://upload.wikimedia.org/wikipedia/commons/8/80/World_map_-_low_resolution.svg" alt="World map" />
+              <div class="region-overlay"><div class="region-header"><div><div class="region-title"></div><div class="region-subtitle"></div></div></div></div>
+              {pins_html}
+            </div>
+            """
+            st.markdown(map_html, unsafe_allow_html=True)
+            if active_regions:
+                st.caption("📍 " + "  ·  ".join(f"**{k}**: {v} idea(s)" for k, v in active_regions.items()))
+            else:
+                st.caption("No ideas with a region assigned yet.")
+            if no_region_count:
+                st.caption(f"ℹ️ {no_region_count} idea(s) have no region assigned and are excluded.")
+
+        # ── Second Row: Ideation Workflow Tree (full width, horizontal) ──
         st.markdown("##### 🌳 Ideation Workflow Tree")
         def cs(cat,st_): return len([i for i in ideas if i.get("category")==cat and i.get("status")==st_])
         def rs(r): return len([i for i in ideas if i.get("status")=="Rejected" and i.get("rejection_reason")==r])
@@ -2060,9 +2391,6 @@ html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'I
                              "borderRadius":5,"padding":[4,8],"position":"inside",
                              "align":"center","fontSize":10,"fontWeight":"bold"}
             for child in node.get("children",[]): add_label_boxes(child)
-        # Tree flow: Ideation → Triage/Feasibility(Queued) → Accepted → Customer → WIP / Deployed
-        #                                                              → Internal
-        #                                              → Rejected
         tree_data = {
             "name":f"Ideation ({total})","itemStyle":{"color":"#1a4fad"},
             "children":[
@@ -2070,16 +2398,8 @@ html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'I
                  "children":[
                      {"name":f"Accepted ({cnt('WIP')+cnt('UAT')+cnt('Completed')})","itemStyle":{"color":"#059669"},
                       "children":[
-                          {"name":f"Customer ({cust_cnt})","itemStyle":{"color":"#00498F"},
-                           "children":[
-                               {"name":f"WIP ({cs('Customer Requirement','WIP')+cs('Customer Requirement','UAT')})","itemStyle":{"color":"#0d9488"}},
-                               {"name":f"Deployed ({cs('Customer Requirement','Completed')})","itemStyle":{"color":"#059669"}},
-                           ]},
-                          {"name":f"Internal ({int_cnt})","itemStyle":{"color":"#0ea5e9"},
-                           "children":[
-                               {"name":f"WIP ({cs('Internal','WIP')+cs('Internal','UAT')})","itemStyle":{"color":"#0d9488"}},
-                               {"name":f"Deployed ({cs('Internal','Completed')})","itemStyle":{"color":"#059669"}},
-                           ]},
+                          {"name":f"WIP ({cnt('WIP')+cnt('UAT')})","itemStyle":{"color":"#0d9488"}},
+                          {"name":f"Deployed ({cnt('Completed')})","itemStyle":{"color":"#059669"}},
                       ]},
                      {"name":f"Rejected ({cnt('Rejected')})","itemStyle":{"color":"#dc2626"},
                       "children":[
@@ -2091,180 +2411,304 @@ html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'I
         }
         add_label_boxes(tree_data)
         st_echarts({
-            "backgroundColor":"#0B0B0D",
+            "backgroundColor":"transparent",
             "tooltip":{"trigger":"item","triggerOn":"mousemove"},
             "series":[{"type":"tree","data":[tree_data],
                        "top":"5%","left":"7%","bottom":"5%","right":"15%",
+                       "orient":"LR",   # horizontal flow
                        "symbol":"rect","symbolSize":1,
                        "lineStyle":{"color":"#f97316","width":2},
                        "label":{"position":"left","verticalAlign":"middle","align":"right","fontSize":10},
                        "leaves":{"label":{"position":"right","verticalAlign":"middle","align":"left","fontSize":9}},
                        "emphasis":{"focus":"descendant"},
                        "expandAndCollapse":True,"animationDuration":550,"initialTreeDepth":2}]
-        }, height="400px")
+        }, height="330px")
 
-        with wl_col:
-            st.markdown("##### 🌍 Region — World Map")
-            region_data = {}
+    # ══════════════════════════════════════════════════════════════════════
+    # PAGE 3 — IDEA MANAGEMENT
+    # ══════════════════════════════════════════════════════════════════════
+    elif dashboard_view == "Idea Management":
+        # ── All Ideas table + Search + CSV (moved to top, fixed height) ──
+        with st.container(border=True):
+            st.markdown("##### 📄 All Ideas")
+            search = st.text_input("🔎 Search ideas", placeholder="Filter by name, project, status…")
+            import pandas as pd
+            cols_show = ["idea_name","name","project","category","automation_category","status",
+                         "priority_label","assigned_engineer","roi"]
+            cols_show_tail = ["sprint_start","delivery_date","customer","region","created_date"]
+            rows = []
             for i in ideas:
-                r = (i.get("region","") or "").strip()
-                if not r:
-                    continue   # skip ideas with no region set
-                key = r.upper()
-                if key not in region_data:
-                    region_data[key] = {"count":0,"roi":0.0}
-                region_data[key]["count"] += 1
-                region_data[key]["roi"]   += float(i.get("roi",0) or 0)
+                row = {c: i.get(c,"") for c in cols_show}
+                fd = i.get("feasibility_data", {}) or {}
+                try:
+                    baseline = float(fd.get("baseline_process_time") or 0) if fd.get("baseline_process_time") not in (None, "") else None
+                except:
+                    baseline = None
+                try:
+                    newp = float(fd.get("new_process_time") or 0) if fd.get("new_process_time") not in (None, "") else None
+                except:
+                    newp = None
+                try:
+                    fte_val = float(fd.get("fte") or 0)
+                except:
+                    fte_val = 0.0
+                freq_val = fd.get("freq","Daily")
+                if baseline is not None and newp is not None and baseline > newp:
+                    savings_per_occ = baseline - newp
+                else:
+                    try:
+                        savings_per_occ = float(fd.get("manual", 0) or 0)
+                    except:
+                        savings_per_occ = 0.0
+                annual_saved = savings_per_occ * fte_val * FREQ_MULT.get(freq_val, FREQ_MULT["Daily"])
 
-            no_region_count = len([i for i in ideas if not (i.get("region","") or "").strip()])
+                row["Baseline (hrs)"] = baseline if baseline is not None else ""
+                row["New (hrs)"] = newp if newp is not None else ""
+                row["Savings/occ (hrs)"] = round(savings_per_occ, 2)
+                row["Annual Saved Hrs"] = round(annual_saved, 1)
+                try:
+                    auto_eff_raw = fd.get("eng", None)
+                    auto_eff = float(auto_eff_raw) if auto_eff_raw not in (None, "") else None
+                except:
+                    auto_eff = None
+                row["Automation Effort (hrs)"] = round(auto_eff, 1) if auto_eff is not None else ""
+                row["Saving Hours"] = round(idea_hours(i), 1)
+                row.update({c: i.get(c,"") for c in cols_show_tail})
+                rows.append(row)
+            df = pd.DataFrame(rows)
+            if search:
+                mask = df.apply(lambda r: r.astype(str).str.contains(search, case=False).any(), axis=1)
+                df   = df[mask]
+            st.dataframe(df, use_container_width=True, hide_index=True, height=350)
+            csv_buf = io.StringIO()
+            df.to_csv(csv_buf, index=False)
+            st.download_button("⬇️ Download CSV", csv_buf.getvalue(), "turbodrive_ideas.csv", "text/csv")
 
-            region_counts = {
-                "India": region_data.get("INDIA", {"count":0})["count"],
-                "USA": region_data.get("USA", {"count":0})["count"],
-                "UK": region_data.get("UK", {"count":0})["count"],
-                "Germany": region_data.get("GERMANY", {"count":0})["count"],
-            }
-            max_count = max(region_counts.values()) or 1
+        # ── Kanban Board ──────────────────────────────────────────────────────
+        with st.container(border=True):
+            st.markdown("##### 📋 Kanban Board")
+            render_kanban_board(ideas)
 
-            def _highlight_size(c):
-                # Glow ring scales with idea count so the busiest region is
-                # visually the most "highlighted" one on the map.
-                return 90 + round((c / max_count) * 70) if c else 60
+    # ══════════════════════════════════════════════════════════════════════
+    # PAGE 4 — WORKFLOW  (horizontal flow diagram — fits dashboard view)
+    # Moved from the sidebar "Workflow" page into the dashboard tab.
+    # ══════════════════════════════════════════════════════════════════════
+    elif dashboard_view == "Workflow":
+        _wf_html = """<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;overflow:hidden;}
+.wrap{width:100%;padding:8px;}
+.wf-title{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:800;margin-bottom:4px;
+  background:linear-gradient(100deg,#00D4FF,#8B5CF6 55%,#10B981);
+  -webkit-background-clip:text;background-clip:text;color:transparent;}
+.wf-sub{font-size:10px;color:#475569;margin-bottom:6px;}
+svg{width:100%;height:auto;display:block;}
+@keyframes gPulse{0%,100%{filter:drop-shadow(0 0 4px rgba(0,212,255,.3));}50%{filter:drop-shadow(0 0 12px rgba(0,212,255,.7));}}
+@keyframes vPulse{0%,100%{filter:drop-shadow(0 0 4px rgba(139,92,246,.3));}50%{filter:drop-shadow(0 0 12px rgba(139,92,246,.7));}}
+@keyframes gYPulse{0%,100%{filter:drop-shadow(0 0 4px rgba(16,185,129,.3));}50%{filter:drop-shadow(0 0 12px rgba(16,185,129,.7));}}
+</style></head><body>
+<div class="wrap">
+<div class="wf-title">🔄 EFS Turbo Drive — Automation Workflow</div>
+<div class="wf-sub">Agile · Sprint-based · Continuous Improvement &nbsp;|&nbsp; Sensitivity: C1-Internal</div>
+<svg id="wf" viewBox="0 0 1850 640" xmlns="http://www.w3.org/2000/svg">
+<defs>
+  <marker id="ab" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0.5 L0,6.5 L7,3.5z" fill="#00D4FF"/></marker>
+  <marker id="av" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0.5 L0,6.5 L7,3.5z" fill="#8B5CF6"/></marker>
+  <marker id="ag" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0.5 L0,6.5 L7,3.5z" fill="#10B981"/></marker>
+  <marker id="ar" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0.5 L0,6.5 L7,3.5z" fill="#ef4444"/></marker>
+  <filter id="fb" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <filter id="fv" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <filter id="fg" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <linearGradient id="cylg" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%" stop-color="#021a30"/><stop offset="45%" stop-color="#0a2d4a"/><stop offset="100%" stop-color="#021a30"/>
+  </linearGradient>
+  <linearGradient id="loopg" x1="0%" y1="100%" x2="0%" y2="0%">
+    <stop offset="0%" stop-color="#8B5CF6"/><stop offset="50%" stop-color="#00D4FF"/><stop offset="100%" stop-color="#10B981"/>
+  </linearGradient>
+</defs>
 
-            # Landmass position (top/left %) for each region's pin, computed
-            # from real lat/long centroids using an equirectangular projection:
-            #   left% = (lon + 180) / 360 * 100
-            #   top%  = (90  - lat) / 180 * 100
-            # This lines the pin up with the actual country on the map
-            # instead of a guessed pixel offset.
-            REGION_POS = {
-                "India":   {"top": "37.8%", "left": "71.9%"},   # lat 22.0, lon  79.0
-                "USA":     {"top": "28.3%", "left": "22.8%"},   # lat 39.0, lon -98.0
-                "UK":      {"top": "20.0%", "left": "49.4%"},   # lat 54.0, lon  -2.0
-                "Germany": {"top": "21.7%", "left": "52.8%"},   # lat 51.0, lon  10.0
-            }
-            active_regions = {k: v for k, v in region_counts.items() if v > 0}
+<!-- ═══════ ROW 1 — MAIN PIPELINE (left → right) ═══════ -->
+<!-- 1. Turbo Drive cylinder -->
+<g filter="url(#fb)" style="animation:gPulse 3s ease-in-out infinite;">
+  <ellipse cx="100" cy="95" rx="65" ry="16" fill="#0a2d4a" stroke="#00D4FF" stroke-width="1.8"/>
+  <rect x="35" y="95" width="130" height="60" fill="url(#cylg)"/>
+  <ellipse cx="100" cy="155" rx="65" ry="16" fill="#071824" stroke="rgba(0,212,255,.5)" stroke-width="1.5"/>
+  <line x1="35" y1="95" x2="35" y2="155" stroke="#00D4FF" stroke-width="1.8"/>
+  <line x1="165" y1="95" x2="165" y2="155" stroke="#00D4FF" stroke-width="1.8"/>
+  <text x="100" y="130" text-anchor="middle" font-family="Space Grotesk" font-size="15" font-weight="800" fill="#00D4FF">Turbo Drive</text>
+  <text x="100" y="148" text-anchor="middle" font-family="Inter" font-size="9" fill="rgba(0,212,255,.6)">IDEA INTAKE</text>
+</g>
 
-            pins_html = "".join(
-                f'<div class="region-highlight" style="top:{REGION_POS[k]["top"]};left:{REGION_POS[k]["left"]};'
-                f'width:{_highlight_size(v)}px;height:{_highlight_size(v)}px;"></div>'
-                f'<div class="region-pin" style="top:{REGION_POS[k]["top"]};left:{REGION_POS[k]["left"]};" '
-                f'title="{k}: {v} idea(s)">{v}</div>'
-                for k, v in active_regions.items()
-            )
+<!-- Arrow TD → Screening -->
+<line x1="180" y1="125" x2="228" y2="125" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
+<circle r="5" fill="#00D4FF"><animateMotion dur="1.4s" repeatCount="indefinite" path="M180,125 H228"/><animate attributeName="opacity" values="0;1;1;0" dur="1.4s" repeatCount="indefinite"/></circle>
 
-            map_html = f"""
-            <style>
-              .region-map-shell {{position:relative;width:100%;aspect-ratio:2/1;max-height:420px;min-height:px;border-radius:22px;overflow:hidden;
-                background:#0b1222;border:1px solid rgba(255,255,255,.08);box-shadow:0 20px 50px rgba(0,0,0,.25);
-              }}
-              .region-map-shell .region-map-bg {{position:absolute;inset:0;
-                width:100%;height:100%;object-fit:cover;
-                opacity:.85;filter:invert(1) brightness(1.6);
-                z-index:0;
-              }}
-              .region-map-shell .region-overlay {{position:relative;z-index:1;padding:16px;display:grid;grid-template-rows:auto 1fr;gap:12px;}}
-              .region-map-shell .region-header {{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:0 6px;}}
-              .region-map-shell .region-title {{font-size:14px;font-weight:700;color:#f8fafc;}}
-              .region-map-shell .region-subtitle {{font-size:12px;color:rgba(248,250,252,.72);}}
-              .region-map-shell .region-highlight {{position:absolute;border-radius:999px;transform:translate(-50%,-50%);
-                background:radial-gradient(circle,rgba(250,204,21,.55) 0%,rgba(250,204,21,.18) 55%,rgba(250,204,21,0) 75%);
-                animation:region-pulse 2.4s ease-in-out infinite;pointer-events:none;z-index:2;
-              }}
-              @keyframes region-pulse {{
-                0%,100% {{opacity:.75;}} 50% {{opacity:1;}}
-              }}
-              .region-map-shell .region-pin {{position:absolute;transform:translate(-50%,-50%);
-                font-size:13px;font-weight:800;color:#facc15;
-                text-shadow:0 0 5px rgba(0,0,0,.95),0 0 2px rgba(0,0,0,.95);
-                pointer-events:none;z-index:3;
-              }}
-            </style>
-            <div class="region-map-shell">
-              <img class="region-map-bg" src="https://upload.wikimedia.org/wikipedia/commons/8/80/World_map_-_low_resolution.svg" alt="World map" />
-              <div class="region-overlay">
-                <div class="region-header">
-                  <div>
-                    <div class="region-title"></div>
-                    <div class="region-subtitle"></div>
-                  </div>
-                </div>
-              </div>
-              {pins_html}
-            </div>
-            """
-            st.markdown(map_html, unsafe_allow_html=True)
-            if active_regions:
-                st.caption(
-                    "📍 " + "  ·  ".join(f"**{k}**: {v} idea(s)" for k, v in active_regions.items())
-                )
-            else:
-                st.caption("No ideas with a region assigned yet.")
-            if no_region_count:
-                st.caption(f"ℹ️ {no_region_count} idea(s) have no region assigned and are excluded.")
-    # ── All Ideas table + CSV (above Kanban) ────────────────────────────
-    st.markdown("##### 📄 All Ideas")
-    search = st.text_input("🔎 Search ideas", placeholder="Filter by name, project, status…")
-    import pandas as pd
-    cols_show = ["idea_name","name","project","category","automation_category","status",
-                 "priority_label","assigned_engineer","roi"]
-    cols_show_tail = ["sprint_start","delivery_date","customer","region","created_date"]
-    rows = []
-    for i in ideas:
-        row = {c: i.get(c,"") for c in cols_show}
-        # feasibility data may contain baseline/new process times stored as JSON
-        fd = i.get("feasibility_data", {}) or {}
-        # extract baseline/new/fte/freq safely
-        try:
-            baseline = float(fd.get("baseline_process_time") or 0) if fd.get("baseline_process_time") not in (None, "") else None
-        except:
-            baseline = None
-        try:
-            newp = float(fd.get("new_process_time") or 0) if fd.get("new_process_time") not in (None, "") else None
-        except:
-            newp = None
-        try:
-            fte_val = float(fd.get("fte") or 0)
-        except:
-            fte_val = 0.0
-        freq_val = fd.get("freq","Daily")
-        # compute savings per occurrence and annual saved hours
-        if baseline is not None and newp is not None and baseline > newp:
-            savings_per_occ = baseline - newp
-        else:
-            # fallback to manual if baseline/new not provided
-            try:
-                savings_per_occ = float(fd.get("manual", 0) or 0)
-            except:
-                savings_per_occ = 0.0
-        annual_saved = savings_per_occ * fte_val * FREQ_MULT.get(freq_val, FREQ_MULT["Daily"])
+<!-- 2. Initial Screening -->
+<g filter="url(#fv)">
+  <rect x="230" y="90" width="180" height="70" rx="12" fill="#110e28" stroke="#8B5CF6" stroke-width="1.8"/>
+  <text x="320" y="118" text-anchor="middle" font-family="Space Grotesk" font-size="13" font-weight="700" fill="#c4b5fd">🔍 Initial Screening</text>
+  <text x="320" y="136" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748b">PL/SPL Review · Category</text>
+</g>
 
-        row["Baseline (hrs)"] = baseline if baseline is not None else ""
-        row["New (hrs)"] = newp if newp is not None else ""
-        row["Savings/occ (hrs)"] = round(savings_per_occ, 2)
-        row["Annual Saved Hrs"] = round(annual_saved, 1)
-        # automation effort stored as 'eng' in feasibility_data
-        try:
-            auto_eff_raw = fd.get("eng", None)
-            auto_eff = float(auto_eff_raw) if auto_eff_raw not in (None, "") else None
-        except:
-            auto_eff = None
-        row["Automation Effort (hrs)"] = round(auto_eff, 1) if auto_eff is not None else ""
-        row["Saving Hours"] = round(idea_hours(i), 1)
-        row.update({c: i.get(c,"") for c in cols_show_tail})
-        rows.append(row)
-    df = pd.DataFrame(rows)
-    if search:
-        mask = df.apply(lambda r: r.astype(str).str.contains(search, case=False).any(), axis=1)
-        df   = df[mask]
-    st.dataframe(df, use_container_width=True, hide_index=True)
-    csv_buf = io.StringIO()
-    df.to_csv(csv_buf, index=False)
-    st.download_button("⬇️ Download CSV", csv_buf.getvalue(), "turbodrive_ideas.csv", "text/csv")
+<!-- Arrow Screening → Approved? -->
+<line x1="410" y1="125" x2="478" y2="125" stroke="#8B5CF6" stroke-width="2" marker-end="url(#av)"/>
 
-    # ── Kanban Board ──────────────────────────────────────────────────────
-    st.markdown("##### 📋 Kanban Board")
-    render_kanban_board(ideas)
+<!-- 3. Approved? diamond -->
+<g filter="url(#fv)" style="animation:vPulse 3.5s ease-in-out infinite 0.5s;">
+  <polygon points="540,85 600,125 540,165 480,125" fill="#0e0b20" stroke="#8B5CF6" stroke-width="2"/>
+  <text x="540" y="121" text-anchor="middle" font-family="Space Grotesk" font-size="11" font-weight="700" fill="#e2e8f0">Approved?</text>
+  <text x="540" y="137" text-anchor="middle" font-family="Space Grotesk" font-size="9" fill="#8B5CF6">PL/SPL Gate</text>
+</g>
+
+<!-- Approved NO → Reject/Park 1 -->
+<path d="M480,165 V290 H390 V548" stroke="#ef4444" stroke-width="1.6" fill="none" stroke-dasharray="5 3" marker-end="url(#ar)" opacity=".8"/>
+<text x="430" y="205" font-family="Space Grotesk" font-size="9.5" font-weight="700" fill="#ef4444">NO</text>
+
+<!-- Approved YES → Business Impact -->
+<line x1="600" y1="125" x2="658" y2="125" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
+<text x="633" y="115" font-family="Space Grotesk" font-size="9" font-weight="700" fill="#10B981">YES</text>
+
+<!-- 4. Business Impact -->
+<g filter="url(#fb)">
+  <rect x="660" y="90" width="200" height="70" rx="12" fill="#061824" stroke="#00D4FF" stroke-width="1.8"/>
+  <text x="760" y="118" text-anchor="middle" font-family="Space Grotesk" font-size="13" font-weight="700" fill="#00D4FF">📊 Business Impact</text>
+  <text x="760" y="136" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748b">Value · Complexity · Priority</text>
+</g>
+
+<!-- Arrow Business → VSM Required? -->
+<line x1="860" y1="125" x2="918" y2="125" stroke="#8B5CF6" stroke-width="2" marker-end="url(#av)"/>
+
+<!-- 5. VSM Required? diamond -->
+<g filter="url(#fv)" style="animation:vPulse 3.5s ease-in-out infinite 1s;">
+  <polygon points="980,85 1040,125 980,165 920,125" fill="#0e0b20" stroke="#8B5CF6" stroke-width="2"/>
+  <text x="980" y="121" text-anchor="middle" font-family="Space Grotesk" font-size="11" font-weight="700" fill="#e2e8f0">VSM</text>
+  <text x="980" y="137" text-anchor="middle" font-family="Space Grotesk" font-size="9" fill="#8B5CF6">Required?</text>
+</g>
+
+<!-- VSM YES → Workshop -->
+<path d="M980,165 V548" stroke="#10B981" stroke-width="1.7" fill="none" marker-end="url(#ag)" opacity=".85"/>
+<text x="1000" y="185" font-family="Space Grotesk" font-size="9" font-weight="700" fill="#10B981">YES</text>
+
+<!-- VSM NO → Feasibility -->
+<line x1="1040" y1="125" x2="1098" y2="125" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
+<text x="1070" y="115" font-family="Space Grotesk" font-size="9" font-weight="700" fill="#10B981">NO</text>
+
+<!-- 6. Feasibility -->
+<g filter="url(#fb)">
+  <rect x="1100" y="90" width="200" height="70" rx="12" fill="#061824" stroke="#00D4FF" stroke-width="1.8"/>
+  <text x="1200" y="118" text-anchor="middle" font-family="Space Grotesk" font-size="13" font-weight="700" fill="#00D4FF">📋 Feasibility Study</text>
+  <text x="1200" y="136" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748b">ROI · Risk · Effort</text>
+</g>
+
+<!-- 7. Prioritization -->
+<g>
+  <rect x="1320" y="90" width="200" height="70" rx="12" fill="#0f0a1e" stroke="#8B5CF6" stroke-width="1.8"/>
+  <text x="1420" y="118" text-anchor="middle" font-family="Space Grotesk" font-size="13" font-weight="700" fill="#a78bfa">📌 Prioritization Matrix</text>
+  <text x="1420" y="136" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#94a3b8">HIGH · MEDIUM · LOW</text>
+</g>
+
+<!-- Arrow Feasibility → Prioritization -->
+<line x1="1300" y1="125" x2="1318" y2="125" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
+
+<!-- 8. Management Approval diamond -->
+<g filter="url(#fv)" style="animation:vPulse 3.5s ease-in-out infinite 1.5s;">
+  <polygon points="1640,85 1700,125 1640,165 1580,125" fill="#0e0b20" stroke="#8B5CF6" stroke-width="2"/>
+  <text x="1640" y="118" text-anchor="middle" font-family="Space Grotesk" font-size="10" font-weight="700" fill="#e2e8f0">Mgmt</text>
+  <text x="1640" y="134" text-anchor="middle" font-family="Space Grotesk" font-size="9" fill="#8B5CF6">Approval</text>
+</g>
+
+<!-- Arrow Prioritization → Mgmt -->
+<line x1="1520" y1="125" x2="1578" y2="125" stroke="#8B5CF6" stroke-width="2" marker-end="url(#av)"/>
+
+<!-- Mgmt NO → Reject/Park 2 -->
+<path d="M1580,165 V300 H1640 V548" stroke="#ef4444" stroke-width="1.6" fill="none" stroke-dasharray="5 3" marker-end="url(#ar)" opacity=".8"/>
+<text x="1560" y="205" font-family="Space Grotesk" font-size="9.5" font-weight="700" fill="#ef4444">NO</text>
+
+<!-- Mgmt YES → Requirement Gathering (row 2) -->
+<path d="M1640,165 V280 H300 V318" stroke="#00D4FF" stroke-width="2" fill="none" marker-end="url(#ab)"/>
+<text x="1660" y="200" font-family="Space Grotesk" font-size="9.5" font-weight="700" fill="#10B981">YES</text>
+<circle r="5" fill="#00D4FF"><animateMotion dur="2.4s" repeatCount="indefinite" path="M1640,165 V280 H300 V318"/><animate attributeName="opacity" values="0;1;1;0" dur="2.4s" repeatCount="indefinite"/></circle>
+
+<!-- ═══════ ROW 2 — EXECUTION & DELIVERY ═══════ -->
+<!-- 9. Requirement Gathering -->
+<g filter="url(#fb)">
+  <rect x="200" y="320" width="200" height="80" rx="12" fill="#061824" stroke="#00D4FF" stroke-width="1.8"/>
+  <text x="300" y="350" text-anchor="middle" font-family="Space Grotesk" font-size="12" font-weight="700" fill="#00D4FF">📝 Requirement</text>
+  <text x="300" y="366" text-anchor="middle" font-family="Space Grotesk" font-size="12" font-weight="700" fill="#00D4FF">Gathering</text>
+  <text x="300" y="384" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#64748b">User stories · Scope</text>
+</g>
+
+<!-- 10. Sprint Cycle -->
+<g filter="url(#fv)">
+  <rect x="500" y="320" width="520" height="80" rx="14" fill="rgba(139,92,246,.06)" stroke="#8B5CF6" stroke-width="1.8"/>
+  <text x="760" y="352" text-anchor="middle" font-family="Space Grotesk" font-size="13" font-weight="800" fill="#a78bfa">2-WEEK SPRINT CYCLE</text>
+  <text x="760" y="372" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748b">Develop ↔ Plan &amp; design · SIT · Initiation → UAT</text>
+  <path d="M700,352 a30,30 0 1,1 -0.1,0" fill="none" stroke="#00D4FF" stroke-width="2" opacity=".8"/>
+  <path d="M820,352 a30,30 0 1,0 0.1,0" fill="none" stroke="#10B981" stroke-width="2" opacity=".8"/>
+  <text x="700" y="340" text-anchor="middle" font-family="Space Grotesk" font-size="8" fill="#00D4FF">Plan</text>
+  <text x="820" y="340" text-anchor="middle" font-family="Space Grotesk" font-size="8" fill="#10B981">Dev</text>
+</g>
+
+<!-- 11. Go Live -->
+<g filter="url(#fg)" style="animation:gYPulse 3s ease-in-out infinite;">
+  <rect x="1050" y="320" width="200" height="80" rx="12" fill="#061e14" stroke="#10B981" stroke-width="2"/>
+  <text x="1150" y="352" text-anchor="middle" font-family="Space Grotesk" font-size="13" font-weight="800" fill="#10B981">🚀 Go Live</text>
+  <text x="1150" y="372" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748b">Deploy to production</text>
+</g>
+
+<!-- 12. Hypercare -->
+<g filter="url(#fb)">
+  <rect x="1300" y="320" width="200" height="80" rx="12" fill="#051825" stroke="#00D4FF" stroke-width="1.8"/>
+  <text x="1400" y="352" text-anchor="middle" font-family="Space Grotesk" font-size="13" font-weight="700" fill="#00D4FF">🛡️ Hypercare</text>
+  <text x="1400" y="372" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748b">Monitor · Hotfixes</text>
+</g>
+
+<!-- 13. Benefits Tracking -->
+<g filter="url(#fb)">
+  <rect x="1550" y="320" width="200" height="80" rx="12" fill="#051825" stroke="#00D4FF" stroke-width="1.8"/>
+  <text x="1650" y="352" text-anchor="middle" font-family="Space Grotesk" font-size="12" font-weight="700" fill="#00D4FF">📈 Benefits Track</text>
+  <text x="1650" y="372" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748b">KPI · Hrs saved · ROI</text>
+</g>
+
+<!-- Row 2 arrows -->
+<line x1="400" y1="360" x2="498" y2="360" stroke="#8B5CF6" stroke-width="2" marker-end="url(#av)"/>
+<line x1="1020" y1="360" x2="1048" y2="360" stroke="#10B981" stroke-width="2" marker-end="url(#ag)"/>
+<line x1="1250" y1="360" x2="1298" y2="360" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
+<line x1="1500" y1="360" x2="1548" y2="360" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
+
+<!-- ═══════ ROW 3 — BRANCHES ═══════ -->
+<!-- Reject/Park 1 -->
+<g filter="url(#fv)">
+  <rect x="310" y="550" width="160" height="60" rx="10" fill="#200a0a" stroke="#ef4444" stroke-width="1.6"/>
+  <text x="390" y="582" text-anchor="middle" font-family="Space Grotesk" font-size="12" font-weight="700" fill="#ef4444">✕ Reject / Park</text>
+</g>
+
+<!-- VSM Workshop -->
+<g filter="url(#fg)">
+  <rect x="880" y="550" width="200" height="60" rx="10" fill="#061e14" stroke="#10B981" stroke-width="1.8"/>
+  <text x="980" y="582" text-anchor="middle" font-family="Space Grotesk" font-size="12" font-weight="700" fill="#10B981">🧠 VSM Workshop</text>
+</g>
+<!-- Workshop → Feasibility (dashed rejoin) -->
+<path d="M1080,580 H1240 V162" stroke="#10B981" stroke-width="1.5" fill="none" stroke-dasharray="5 3" marker-end="url(#ab)" opacity=".7"/>
+
+<!-- Reject/Park 2 -->
+<g filter="url(#fv)">
+  <rect x="1560" y="550" width="160" height="60" rx="10" fill="#200a0a" stroke="#ef4444" stroke-width="1.6"/>
+  <text x="1640" y="582" text-anchor="middle" font-family="Space Grotesk" font-size="12" font-weight="700" fill="#ef4444">✕ Reject / Park</text>
+</g>
+
+<!-- ═══════ LOOP BACK — Continuous Improvement ═══════ -->
+<path d="M1650,400 V40 H100 V93" stroke="url(#loopg)" stroke-width="2.2" fill="none" stroke-dasharray="8 5" marker-end="url(#ag)" opacity=".7"/>
+<text x="875" y="28" text-anchor="middle" font-family="Space Grotesk" font-size="11" font-weight="700" letter-spacing="2" fill="rgba(139,92,246,.8)">🔄 CONTINUOUS IMPROVEMENT LOOP</text>
+<circle r="5.5" fill="#8B5CF6" opacity=".75"><animateMotion dur="6s" repeatCount="indefinite" path="M1650,400 V40 H100 V93"/><animate attributeName="opacity" values="0;.75;.75;0" dur="6s" repeatCount="indefinite"/></circle>
+
+</svg>
+</div>
+</body></html>
+        """
+        st.components.v1.html(_wf_html, height=560, scrolling=False)
 
     render_copyright()
 
@@ -3302,14 +3746,6 @@ def main():
             if st.button("🚪 Logout"):
                 for k in ["email","role","name","theme"]: st.session_state.pop(k,None)
                 st.rerun()
-
-        st.divider()
-        st.markdown("**🎨 Theme**")
-        chosen = st.selectbox("", list(THEMES.keys()),
-                              index=list(THEMES.keys()).index(ss("theme","ALTEN Red & Blue")),
-                              label_visibility="collapsed", key="theme_sel")
-        if chosen != ss("theme"):
-            st.session_state["theme"] = chosen; st.rerun()
 
         st.markdown("---")
         st.markdown(
