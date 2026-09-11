@@ -7,6 +7,8 @@ from streamlit_sortables import sort_items
 from werkzeug.security import generate_password_hash, check_password_hash
 from supabase import create_client, Client
 
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  CONFIG / CONSTANTS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -32,6 +34,9 @@ AUTO_CATS  = AUTOMATION_CATS + AI_CATS   # kept for feasibility dropdown (flat l
 FREQ_MULT  = {"Daily":260,"Weekly":52,"Monthly":12,"Yearly":1}
 REJ_REASONS= ["Technical Rejection","Business Rejection"]
 ROLES_LIST = ["super user","normal user","automation engineer","automation pl","pl/spl"]
+# Manual Type: how a user record was provisioned. Kept as a plain list (not
+# an enum) so new types can be appended later without a migration.
+MANUAL_TYPES = ["Manual", "Self-Registered", "Bulk Import", "System Default"]
 DEFAULT_PW = "admin123"
 
 SUPPORT_NAME  = "Manoj JAGADEESH, Raja AMMAIAPPAN, Naveen KONNUR"
@@ -50,7 +55,7 @@ BLOCKED_DOMAINS = {
 
 ROLE_PAGES = {
     "super user":         ["Dashboard","Submit Idea","PL Assignment","Feasibility","Approval","Admin","OTP List","Deployed Tools"],
-    "normal user":        ["Deployed Tools","Submit Idea"],
+    "normal user":        ["Dashboard","Submit Idea"],
     "automation engineer":["Dashboard","Submit Idea","Feasibility","Deployed Tools"],
     "automation pl":      ["Dashboard","Submit Idea","PL Assignment","Feasibility","Approval","Deployed Tools"],
     "pl/spl":             ["Dashboard","Submit Idea","Approval","Deployed Tools"],
@@ -81,10 +86,10 @@ STATUS_ICONS = {
 }
 
 THEMES = {
-    "ALTEN Red & Blue":   {"primary":"#E30613","secondary":"#00AEEF","bg":"#f5f6fa","sidebar":"#0a0a0a"},
-    "Ocean Blue":         {"primary":"#1a4fad","secondary":"#0ea5e9","bg":"#f0f4ff","sidebar":"#0a0a0a"},
-    "Forest Green":       {"primary":"#059669","secondary":"#0d9488","bg":"#f0fdf4","sidebar":"#0a0a0a"},
-    "Purple Haze":        {"primary":"#7c3aed","secondary":"#a855f7","bg":"#faf5ff","sidebar":"#0a0a0a"},
+    "ALTEN Red & Blue":   {"primary":"#E30613","secondary":"#00AEEF","bg":"#f5f6fa","sidebar":"#f1f5f9"},
+    "Ocean Blue":         {"primary":"#1a4fad","secondary":"#0ea5e9","bg":"#f0f4ff","sidebar":"#f1f5f9"},
+    "Forest Green":       {"primary":"#059669","secondary":"#0d9488","bg":"#f0fdf4","sidebar":"#f1f5f9"},
+    "Purple Haze":        {"primary":"#7c3aed","secondary":"#a855f7","bg":"#faf5ff","sidebar":"#f1f5f9"},
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -152,6 +157,7 @@ def init_db():
     for col, dtype in idea_cols:
         _run_sql(sb, f"ALTER TABLE ideas ADD COLUMN IF NOT EXISTS {col} {dtype};")
     _run_sql(sb, "ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash text;")
+    _run_sql(sb, "ALTER TABLE users ADD COLUMN IF NOT EXISTS manual_type text;")
 
     _run_sql(sb, """
         CREATE TABLE IF NOT EXISTS otp_list (
@@ -174,13 +180,14 @@ def init_db():
             created_date  text
         );
     """)
+    _run_sql(sb, "ALTER TABLE deployed_tools ADD COLUMN IF NOT EXISTS deployed_by_email text;")
 
     dh = generate_password_hash(DEFAULT_PW)
     for u in DEFAULT_USERS:
         try:
             existing = sb.table("users").select("email,password_hash").eq("email", u["email"].lower()).execute()
             if not existing.data:
-                sb.table("users").insert({"email":u["email"].lower(),"role":u["role"],"password_hash":dh}).execute()
+                sb.table("users").insert({"email":u["email"].lower(),"role":u["role"],"password_hash":dh,"manual_type":"System Default"}).execute()
             elif not existing.data[0].get("password_hash"):
                 sb.table("users").update({"password_hash":dh}).eq("email",u["email"].lower()).execute()
         except Exception:
@@ -228,20 +235,29 @@ def get_users():
     resp = get_supabase().table("users").select("*").order("email").execute()
     return resp.data or []
 
-def add_user(email, role):
+def add_user(email, role, manual_type="Manual"):
     sb  = get_supabase()
     dh  = generate_password_hash(DEFAULT_PW)
     existing = sb.table("users").select("password_hash").eq("email",email.lower()).execute()
     if existing.data:
-        sb.table("users").update({"role":role}).eq("email",email.lower()).execute()
+        sb.table("users").update({"role":role,"manual_type":manual_type}).eq("email",email.lower()).execute()
     else:
-        sb.table("users").insert({"email":email.lower(),"role":role,"password_hash":dh}).execute()
+        sb.table("users").insert({"email":email.lower(),"role":role,"password_hash":dh,"manual_type":manual_type}).execute()
 
 def delete_user(email):
     get_supabase().table("users").delete().eq("email",email.lower()).execute()
 
 def update_role(email, role):
     get_supabase().table("users").update({"role":role}).eq("email",email.lower()).execute()
+
+def update_manual_type(email, manual_type):
+    get_supabase().table("users").update({"manual_type":manual_type}).eq("email",email.lower()).execute()
+
+def update_user_email(old_email, new_email):
+    """Reset a user's registered email (the table's primary key). Postgres
+    allows updating a primary-key column via UPDATE, so this is a plain
+    update rather than a delete+insert."""
+    get_supabase().table("users").update({"email": new_email.lower()}).eq("email", old_email.lower()).execute()
 
 def set_password(email, new_pw):
     get_supabase().table("users").update({"password_hash":generate_password_hash(new_pw)}).eq("email",email.lower()).execute()
@@ -281,7 +297,7 @@ def get_deployed_tools():
     resp = get_supabase().table("deployed_tools").select("*").order("created_date", desc=True).execute()
     return resp.data or []
 
-def add_deployed_tool(tool_name, description, idea_id="", project="", deployed_by=""):
+def add_deployed_tool(tool_name, description, idea_id="", project="", deployed_by="", deployed_by_email=""):
     row = {
         "id": str(uuid.uuid4()),
         "tool_name": tool_name or "",
@@ -289,6 +305,7 @@ def add_deployed_tool(tool_name, description, idea_id="", project="", deployed_b
         "idea_id": idea_id or "",
         "project": project or "",
         "deployed_by": deployed_by or "",
+        "deployed_by_email": deployed_by_email or "",
         "created_date": datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
     get_supabase().table("deployed_tools").insert(row).execute()
@@ -397,12 +414,17 @@ Priority    : {queue_info.get('priority_label','') if queue_info else ''}"""
 def build_feasibility_outlook(idea, roi, vsm_date, queue_info):
     body = f"""Feasibility Study is complete — please review and provide GO / NO-GO decision.
 
+Idea ID     : {idea.get('id','')}
 Idea Name   : {idea.get('idea_name','')}
 Project     : {idea.get('project','')}
 Category    : {idea.get('category','')}
+Submitter   : {idea.get('name','')}
 Engineer    : {idea.get('assigned_engineer','')}
+PL / SPL    : {idea.get('pl_name','')}
+Feasibility Status : Submitted
 ROI         : {round(roi,2)}
 Priority    : {idea.get('priority_label','')}
+Submitted On: {datetime.now().strftime('%Y-%m-%d %H:%M')}
 VSM Date    : {fmt_d(vsm_date)} at 11:00 AM"""
     if queue_info:
         body += f"\nDelivery    : {fmt_d(queue_info['sprint_end'])}"
@@ -426,6 +448,33 @@ Date        : {fmt_d(mdate)} at {times.get(mtype,'')}
 Engineer    : {idea.get('assigned_engineer','-')}
 PL / SPL    : {idea.get('pl_name','-')}"""
     return outlook_link(recipients, f"[Turbo Drive] {titles.get(mtype,'Meeting')}: {idea.get('idea_name','')} — {fmt_d(mdate)}", body)
+
+def build_calendar_invite_link(subject, body, start_dt, end_dt, attendees):
+    """Build an Outlook Web calendar deep-link for a pre-filled invite."""
+    to = ",".join(e for e in attendees if is_email(e))
+    startdt = start_dt.strftime("%Y-%m-%dT%H:%M:%S")
+    enddt   = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
+    return (
+        "https://outlook.office.com/calendar/0/deeplink/compose?"
+        f"subject={quote(subject)}&body={quote(body)}&startdt={quote(startdt)}"
+        f"&enddt={quote(enddt)}&to={quote(to)}&path=%2Fcalendar%2Faction%2Fcompose&rru=addevent"
+    )
+
+def build_tool_feedback_outlook(tool, from_name):
+    body = f"""Feedback on a deployed tool.
+
+Tool Name   : {tool.get('tool_name','')}
+Description : {tool.get('description','')}
+Project     : {tool.get('project','-')}
+Deployed By : {tool.get('deployed_by','-')}
+
+From        : {from_name or '-'}
+
+--- Feedback ---
+(Write your feedback here)
+"""
+    to_email = tool.get("deployed_by_email","")
+    return outlook_link([to_email], f"[Turbo Drive] Feedback on Deployed Tool: {tool.get('tool_name','')}", body)
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  SHARED UI COMPONENTS
@@ -469,19 +518,43 @@ def apply_theme(theme_name):
     st.markdown(f"""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    /* ══════════════════════════════════════════════════════════════════
+       FORCE LIGHT THEME — GLOBALLY, REGARDLESS OF OS/BROWSER APPEARANCE
+       `color-scheme:light` stops the browser from auto-darkening native
+       form controls (scrollbars, date pickers, etc.) when Windows/Chrome/
+       Edge appearance is set to Dark. Applied on :root as well as html/body
+       so it wins before any other stylesheet loads.
+       ══════════════════════════════════════════════════════════════════ */
+    :root, html, body, [data-testid="stApp"]{{color-scheme:light !important;}}
     html,body,[data-testid="stApp"]{{
         font-family:'Inter',sans-serif;
         background:{t['bg']} !important;
         color:{text_color};
         font-size:clamp(12px,1.1vw,15px);
     }}
-    [data-testid="stSidebar"]{{background:{t['sidebar']} !important;}}
-    [data-testid="stSidebar"] *{{color:#e2e8f0 !important;}}
+    [data-testid="stAppViewContainer"],
+    [data-testid="stBottomBlockContainer"]{{background:{t['bg']} !important;color:{text_color} !important;}}
+    [data-testid="stHeader"]{{background:transparent !important;}}
+    [data-testid="stToolbar"], [data-testid="stToolbar"] *{{color:{text_color} !important;}}
+    [data-testid="stDecoration"]{{background:linear-gradient(90deg,{t['primary']},{t['secondary']}) !important;}}
+    /* Any modal/dialog/popover (BaseWeb-based) stays light no matter what */
+    div[data-baseweb="modal"], div[data-baseweb="modal"] *,
+    div[data-testid="stDialog"], div[data-testid="stDialog"] *{{
+        background-color:#ffffff !important;color:{text_color} !important;
+    }}
+    ::-webkit-scrollbar{{background:#f1f5f9;}}
+    ::-webkit-scrollbar-thumb{{background:#cbd5e1;border-radius:8px;}}
+    [data-testid="stSidebar"]{{background:{t['sidebar']} !important;border-right:1px solid #e2e8f0;}}
+    [data-testid="stSidebar"] *{{color:#0f172a !important;}}
     [data-testid="stSidebar"] .stRadio label{{
         font-size:clamp(11px,1vw,14px);padding:6px 10px;border-radius:8px;
         transition:background .15s;cursor:pointer;
     }}
-    [data-testid="stSidebar"] .stRadio label:hover{{background:rgba(255,255,255,.1);}}
+    [data-testid="stSidebar"] .stRadio label:hover{{background:rgba(0,0,0,.05);}}
+    [data-baseweb="popover"] [data-baseweb="menu"],
+    [data-baseweb="popover"] ul[role="listbox"]{{background-color:#ffffff !important;}}
+    [data-baseweb="menu"] li,
+    ul[role="listbox"] li{{background-color:#ffffff !important;color:#0f172a !important;}}
 
     /* ── Force readable text for native Streamlit chrome on every theme ──
        Streamlit's own widgets (labels, captions, metrics, alerts, tabs,
@@ -509,11 +582,128 @@ def apply_theme(theme_name):
     [data-testid="stTextArea"] textarea,
     [data-testid="stNumberInput"] input,
     [data-testid="stDateInput"] input,
+    [data-testid="stTimeInput"] input,
     [data-testid="stSelectbox"] [data-baseweb="select"] > div,
     [data-testid="stMultiSelect"] [data-baseweb="select"] > div{{
         background-color:{surface} !important;color:{text_color} !important;
     }}
     [data-testid="stDataFrame"]{{color:{text_color};}}
+
+    /* ══════════════════════════════════════════════════════════════════
+       GLOBAL DESIGN SYSTEM — the Logout button is the single source of
+       truth. Every interactive control (buttons, dropdowns, inputs,
+       search fields, tabs, radios/segmented/chips) shares these tokens
+       for radius, height, border, typography, hover/focus/active/disabled
+       state and transition — so nothing in the app looks like it belongs
+       to a different product.
+       ══════════════════════════════════════════════════════════════════ */
+    :root{{
+        --ds-radius:8px;
+        --ds-height:40px;
+        --ds-border:1.5px solid #cbd5e1;
+        --ds-border-color:#cbd5e1;
+        --ds-font:'Inter',sans-serif;
+        --ds-font-size:13px;
+        --ds-font-weight:600;
+        --ds-transition:all .15s ease;
+        --ds-shadow-hover:0 2px 8px rgba(0,0,0,.08);
+        --ds-shadow-focus:0 0 0 3px color-mix(in srgb, {t['primary']} 18%, transparent);
+    }}
+    /* Buttons — Logout button's own look, now the base for every button */
+    .stButton>button, .stFormSubmitButton>button, .stDownloadButton>button{{
+        background:#ffffff !important;color:#0f172a !important;
+        border:var(--ds-border) !important;border-radius:var(--ds-radius) !important;
+        min-height:var(--ds-height) !important;
+        font-family:var(--ds-font) !important;font-size:var(--ds-font-size) !important;font-weight:var(--ds-font-weight) !important;
+        padding:8px 20px !important;transition:var(--ds-transition) !important;
+        box-shadow:none !important;
+    }}
+    .stButton>button:hover, .stFormSubmitButton>button:hover, .stDownloadButton>button:hover{{
+        border-color:{t['primary']} !important;box-shadow:var(--ds-shadow-hover) !important;
+        background:#ffffff !important;color:#0f172a !important;opacity:1 !important;
+    }}
+    .stButton>button:focus-visible, .stFormSubmitButton>button:focus-visible, .stDownloadButton>button:focus-visible{{
+        outline:none !important;border-color:{t['primary']} !important;box-shadow:var(--ds-shadow-focus) !important;
+    }}
+    .stButton>button:active, .stFormSubmitButton>button:active, .stDownloadButton>button:active{{
+        background:#f8fafc !important;border-color:{t['primary']} !important;
+    }}
+    .stButton>button:disabled, .stFormSubmitButton>button:disabled, .stDownloadButton>button:disabled{{
+        opacity:.5 !important;cursor:not-allowed !important;box-shadow:none !important;
+    }}
+    /* Dropdowns / selects / multiselects — same radius, height, border, type */
+    [data-testid="stSelectbox"] [data-baseweb="select"] > div,
+    [data-testid="stMultiSelect"] [data-baseweb="select"] > div{{
+        border:var(--ds-border) !important;border-radius:var(--ds-radius) !important;
+        min-height:var(--ds-height) !important;
+        font-family:var(--ds-font) !important;font-size:var(--ds-font-size) !important;
+        transition:var(--ds-transition) !important;
+    }}
+    [data-testid="stSelectbox"] [data-baseweb="select"]:hover > div,
+    [data-testid="stMultiSelect"] [data-baseweb="select"]:hover > div{{border-color:{t['primary']} !important;}}
+    [data-testid="stSelectbox"] [data-baseweb="select"]:focus-within > div,
+    [data-testid="stMultiSelect"] [data-baseweb="select"]:focus-within > div{{
+        border-color:{t['primary']} !important;box-shadow:var(--ds-shadow-focus) !important;
+    }}
+    /* Text / number / date / time inputs — including all search fields
+       (Admin search, Feasibility search, dashboard search, etc.) */
+    [data-testid="stTextInput"] input,
+    [data-testid="stTextArea"] textarea,
+    [data-testid="stNumberInput"] input,
+    [data-testid="stDateInput"] input,
+    [data-testid="stTimeInput"] input{{
+        border:var(--ds-border) !important;border-radius:var(--ds-radius) !important;
+        font-family:var(--ds-font) !important;font-size:var(--ds-font-size) !important;
+        transition:var(--ds-transition) !important;
+    }}
+    [data-testid="stTextInput"] input:hover, [data-testid="stTextArea"] textarea:hover,
+    [data-testid="stNumberInput"] input:hover, [data-testid="stDateInput"] input:hover,
+    [data-testid="stTimeInput"] input:hover{{border-color:{t['primary']} !important;}}
+    [data-testid="stTextInput"] input:focus, [data-testid="stTextArea"] textarea:focus,
+    [data-testid="stNumberInput"] input:focus, [data-testid="stDateInput"] input:focus,
+    [data-testid="stTimeInput"] input:focus{{
+        border-color:{t['primary']} !important;box-shadow:var(--ds-shadow-focus) !important;outline:none !important;
+    }}
+    [data-testid="stTextInput"] input:not([type]),
+    [data-testid="stTextInput"] input[type="text"],
+    [data-testid="stTextInput"] input[type="password"]{{min-height:calc(var(--ds-height) - 2px) !important;}}
+    /* Tabs — pill-style, same radius/border/hover language as buttons */
+    [data-testid="stTabs"] [data-baseweb="tab-list"]{{gap:6px !important;border-bottom:1.5px solid #e2e8f0 !important;}}
+    [data-testid="stTabs"] [data-baseweb="tab"]{{
+        border-radius:var(--ds-radius) var(--ds-radius) 0 0 !important;
+        font-family:var(--ds-font) !important;font-weight:var(--ds-font-weight) !important;
+        font-size:var(--ds-font-size) !important;transition:var(--ds-transition) !important;
+    }}
+    [data-testid="stTabs"] [data-baseweb="tab"]:hover{{background:rgba(0,0,0,.03) !important;}}
+    [data-testid="stTabs"] [aria-selected="true"]{{border-bottom-color:{t['primary']} !important;}}
+    [data-testid="stTabs"] [aria-selected="true"] p{{color:{t['primary']} !important;}}
+    /* Radios / segmented controls / chips — same rounded, bordered language */
+    [data-testid="stRadio"] label,
+    [data-testid="stSegmentedControl"] label{{
+        border-radius:var(--ds-radius) !important;
+        font-family:var(--ds-font) !important;font-size:var(--ds-font-size) !important;
+        transition:var(--ds-transition) !important;
+    }}
+    [data-testid="stSegmentedControl"] div[role="radiogroup"]{{
+        border:var(--ds-border) !important;border-radius:var(--ds-radius) !important;overflow:hidden;
+    }}
+    [data-testid="stSegmentedControl"] label[aria-checked="true"]{{
+        background:{t['primary']} !important;color:#ffffff !important;
+    }}
+    [data-testid="stSegmentedControl"] label[aria-checked="true"] p{{color:#ffffff !important;}}
+    input:disabled, textarea:disabled, [data-baseweb="select"][aria-disabled="true"]{{opacity:.5 !important;}}
+
+    /* ── Uniform page content alignment (every page, sidebar excluded) ──
+       One shared block-container padding so headers, filters, tables and
+       cards all start from the exact same horizontal position no matter
+       which page is open — no page gets its own custom offset. */
+    [data-testid="stAppViewContainer"] .main .block-container,
+    [data-testid="stMainBlockContainer"]{{
+        padding-left:2.2rem !important;
+        padding-right:2.2rem !important;
+        padding-top:1.6rem !important;
+        max-width:100% !important;
+    }}
 
     h1{{
         background:linear-gradient(135deg,{t['primary']},{t['secondary']});
@@ -539,11 +729,6 @@ def apply_theme(theme_name):
         padding:8px 18px;border-radius:8px;text-decoration:none;
         font-weight:600;font-size:clamp(11px,1vw,13px);margin-top:8px;
     }}
-    .stButton>button{{
-        background:linear-gradient(135deg,{t['primary']},{t['secondary']});
-        color:#fff;border:none;border-radius:8px;font-weight:600;padding:8px 20px;
-    }}
-    .stButton>button:hover{{opacity:.88;}}
     div[data-testid="stForm"]{{background:{surface};border-radius:12px;padding:12px;}}
     .login-box{{
         max-width:440px;margin:40px auto;background:{surface};border-radius:16px;
@@ -555,6 +740,20 @@ def apply_theme(theme_name):
         background:{surface};border-radius:10px;padding:10px 14px;
         border:1px solid #e2e8f0;margin-bottom:10px;
         box-shadow:0 1px 4px rgba(0,0,0,.05);
+    }}
+    [data-testid="stExpander"] summary{{white-space:normal !important;height:auto !important;line-height:1.4 !important;}}
+    [data-testid="stExpander"] summary p{{white-space:normal !important;}}
+    .dash-toprow{{margin-bottom:6px;}}
+    .dash-toprow [data-testid="stMultiSelect"] > div > div{{min-height:40px !important;}}
+    .dash-toprow [data-baseweb="select"]{{font-size:11px !important;}}
+    /* Pixel-perfect baseline: segmented control + multiselects share one
+       row height and vertically center within their column. */
+    .dash-toprow [data-testid="stHorizontalBlock"]{{align-items:center !important;}}
+    .dash-toprow [data-testid="stSegmentedControl"]{{margin-top:0 !important;}}
+    .dash-toprow [data-testid="stSegmentedControl"] div[role="radiogroup"]{{min-height:40px !important;}}
+    .dash-toprow [data-testid="stSegmentedControl"] label{{
+        min-height:40px !important;display:flex !important;align-items:center !important;
+        padding-top:0 !important;padding-bottom:0 !important;
     }}
 
     /* Reset button in dashboard filter row — match the multiselect filter
@@ -595,7 +794,7 @@ def apply_theme(theme_name):
         border-radius:20px 20px 0 0;
     }}
     /* light reflection effect */
-    .kpi-card-v2::after{{
+    .kpi-card-v2::ar{{
         content:"";position:absolute;top:0;left:0;right:0;height:45%;
         background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,0));
         border-radius:20px 20px 0 0;pointer-events:none;
@@ -724,7 +923,7 @@ def ss(key, default=None):
 #  triggers a rerun, and that rerun is what resets the timer here.
 # ══════════════════════════════════════════════════════════════════════════════
 SESSION_TIMEOUT_SECONDS = 600   # 5 minutes
-SESSION_WARNING_AT      = 340   # show warning after 4 minutes (60s before logout)
+SESSION_WARNING_AT      = 340   # show warning ar 4 minutes (60s before logout)
 
 def touch_activity():
     st.session_state["_last_activity"] = datetime.now()
@@ -814,7 +1013,7 @@ def idea_hours(i):
             per_occurrence_savings = baseline - newp
         else:
             per_occurrence_savings = float(fd.get("manual",0) or 0)
-        return per_occurrence_savings * float(fd.get("fte",0) or 0) * FREQ_MULT.get(fd.get("freq","Daily"),1)
+        return per_occurrence_savings * float(fd.get("",0) or 0) * FREQ_MULT.get(fd.get("freq","Daily"),1)
     except: return 0
 
 def kpi_card(value, label, color, sub="", icon=""):
@@ -998,7 +1197,7 @@ def _render_kpi_row(total, completed, completed_pct, cust_hrs, int_hrs, cust_roi
       z-index:3;
     }
     /* top light reflection */
-    .kpi-card-v2::after{
+    .kpi-card-v2::ar{
       content:"";position:absolute;top:0;left:0;right:0;height:45%;
       background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,0));
       border-radius:22px 22px 0 0;pointer-events:none;
@@ -1263,7 +1462,7 @@ def _render_kanban_card(idea, status, color, all_ideas, id_to_idea, depth=0):
     eng_name = eng.split("@")[0] if "@" in eng else (eng or "—")
     # Simple label: "Child Card" prefix for nested cards, card icon for top-level
     label_prefix = "↳ 📦 Child Card — " if depth > 0 else "📄 "
-    label = label_prefix + (idea.get("idea_name") or "No Name")[:26]
+    label = label_prefix + (idea.get("idea_name") or "No Name")
 
     with st.expander(label, expanded=False):
         parent_name = ""
@@ -1428,12 +1627,12 @@ def page_login():
                         st.success("Welcome!")
                         st.rerun()
 
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2, gap="small")
+        with col1:
+            if st.button("🔑 Reset Credentials", use_container_width=True):
+                st.session_state["_page_override"] = "reset_credentials"; st.rerun()
         with col2:
-            if st.button("🔑 Change Password"):
-                st.session_state["_page_override"] = "change_password"; st.rerun()
-        with col3:
-            if st.button("📝 Register"):
+            if st.button("📝 Register", use_container_width=True):
                 st.session_state["_page_override"] = "register"; st.rerun()
 
         st.markdown(
@@ -1470,7 +1669,8 @@ def page_register():
                     st.error("This email is already registered — please log in.")
                 else:
                     get_supabase().table("users").insert({
-                        "email":email.lower(),"role":"normal user","password_hash":generate_password_hash(pw)
+                        "email":email.lower(),"role":"normal user","password_hash":generate_password_hash(pw),
+                        "manual_type":"Self-Registered"
                     }).execute()
                     st.success("✅ Registered! You can now log in.")
     if st.button("← Back to Login"):
@@ -1478,34 +1678,96 @@ def page_register():
     render_copyright()
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  PAGE: CHANGE PASSWORD
+#  PAGE: RESET CREDENTIALS  (replaces the old single "Change Password" page)
 # ══════════════════════════════════════════════════════════════════════════════
-def page_change_password():
-    page_header("Change Password")
-    prefill = ss("email","")
-    with st.form("cpw_form"):
-        email  = st.text_input("Email", value=prefill)
-        cur_pw = st.text_input("Current Password", type="password")
-        new_pw = st.text_input("New Password", type="password")
-        cnf_pw = st.text_input("Confirm New Password", type="password")
-        if st.form_submit_button("Update Password", use_container_width=True):
-            if not all([email,cur_pw,new_pw,cnf_pw]):
-                st.error("All fields required.")
-            elif new_pw != cnf_pw:
-                st.error("New passwords do not match.")
+def page_reset_credentials():
+    page_header("Reset Credentials 🔑")
+    choice = ss("_reset_credentials_choice")
+
+    # ── Step 1: choose what to reset ───────────────────────────────────────
+    if not choice:
+        st.caption("Choose what you'd like to reset.")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("🔒 Reset Password", use_container_width=True):
+                st.session_state["_reset_credentials_choice"] = "password"; st.rerun()
+        with c2:
+            if st.button("📧 Reset Email ID", use_container_width=True):
+                st.session_state["_reset_credentials_choice"] = "email"; st.rerun()
+        if st.button("← Back to Login"):
+            st.session_state.pop("_page_override",None); st.rerun()
+        render_copyright(); return
+
+    # ── Step 2a: Reset Password — just the new password ────────────────────
+    if choice == "password":
+        st.markdown("##### Reset Password")
+        prefill = ss("email","")
+        with st.form("reset_pw_form"):
+            email  = st.text_input("Email", value=prefill, disabled=bool(prefill))
+            new_pw = st.text_input("New Password", type="password")
+            bcol1, bcol2 = st.columns(2)
+            with bcol1:
+                submit_clicked = st.form_submit_button("Submit", use_container_width=True)
+            with bcol2:
+                cancel_clicked = st.form_submit_button("Cancel", use_container_width=True)
+
+        if cancel_clicked:
+            st.session_state.pop("_reset_credentials_choice", None); st.rerun()
+
+        if submit_clicked:
+            if not email or not new_pw:
+                st.error("Email and New Password are required.")
             elif len(new_pw) < 4:
-                st.error("Minimum 4 characters.")
+                st.error("Password must be at least 4 characters.")
             else:
-                resp = get_supabase().table("users").select("*").eq("email",email.lower()).execute()
+                resp = get_supabase().table("users").select("email").eq("email", email.lower()).execute()
                 if not resp.data:
                     st.error("Email not found.")
-                elif not check_password_hash(resp.data[0].get("password_hash") or "", cur_pw):
-                    st.error("🚫 Current password is incorrect.")
                 else:
                     set_password(email.lower(), new_pw)
-                    st.success("✅ Password changed successfully.")
-    if st.button("← Back"):
-        st.session_state.pop("_page_override",None); st.rerun()
+                    st.success("✅ Password reset successfully.")
+
+    # ── Step 2b: Reset Email ID — old email must match, new must be free ───
+    elif choice == "email":
+        st.markdown("##### Reset Email ID")
+        prefill_old = ss("email","")
+        with st.form("reset_email_form"):
+            old_email = st.text_input("Old Email ID", value=prefill_old, disabled=bool(prefill_old))
+            new_email = st.text_input("New Email ID", placeholder="you@company.com")
+            bcol1, bcol2 = st.columns(2)
+            with bcol1:
+                submit_clicked = st.form_submit_button("Submit", use_container_width=True)
+            with bcol2:
+                cancel_clicked = st.form_submit_button("Cancel", use_container_width=True)
+
+        if cancel_clicked:
+            st.session_state.pop("_reset_credentials_choice", None); st.rerun()
+
+        if submit_clicked:
+            if not old_email or not new_email:
+                st.error("Both Old and New Email ID are required.")
+            elif not is_email(new_email.strip()):
+                st.error("Please enter a valid New Email ID.")
+            else:
+                resp = get_supabase().table("users").select("email").eq("email", old_email.strip().lower()).execute()
+                if not resp.data:
+                    st.error("🚫 Old Email ID does not match any registered account.")
+                else:
+                    dup = get_supabase().table("users").select("email").eq("email", new_email.strip().lower()).execute()
+                    if dup.data:
+                        st.error("This email is already registered.")
+                    else:
+                        update_user_email(old_email.strip(), new_email.strip())
+                        # Keep the current session valid if a logged-in user just
+                        # renamed their own account.
+                        if ss("email","").lower() == old_email.strip().lower():
+                            st.session_state["email"] = new_email.strip().lower()
+                            st.session_state["name"]  = new_email.strip().split("@")[0].replace("."," ").title()
+                        st.success("✅ Email ID updated successfully.")
+
+    st.write("")
+    if st.button("← Back to Reset Options"):
+        st.session_state.pop("_reset_credentials_choice", None); st.rerun()
     render_copyright()
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1726,9 +1988,76 @@ def page_feasibility():
     all_ideas = get_all()
     assigned  = rank_ideas([i for i in all_ideas if i.get("status")=="Assigned"])
 
+    # ── Unified search — filters BOTH the engineer-wise line-items table
+    #    and the idea cards ("ENG Rows") below from one input, in real time.
+    search_query = st.text_input(
+        "Search Feasibility",
+        key="feasibility_search",
+        placeholder="Search by Email ID, Employee Name, Project Name, Request ID, Status…",
+        label_visibility="collapsed",
+    )
+    q = search_query.strip().lower()
+
+    def _feas_search_blob(i):
+        fd = i.get("feasibility_data", {}) or {}
+        draft = fd.get("_draft", {}) if isinstance(fd, dict) else {}
+        return " ".join(str(x) for x in [
+            i.get("id",""), i.get("idea_name",""), i.get("name",""), i.get("submitter_email",""),
+            i.get("project",""), i.get("category",""), i.get("status",""), i.get("assigned_engineer",""),
+            i.get("pl_name",""), i.get("priority_label",""), i.get("automation_category",""),
+            fd.get("freq",""), draft.get("freq",""),
+        ]).lower()
+
+    st.markdown("#### 📊 Engineer-wise Feasibility Line Items")
+    import pandas as pd
+    line_item_ideas = [x for x in all_ideas if x.get("status") in ("Assigned", "WIP")]
+    if q:
+        line_item_ideas = [i for i in line_item_ideas if q in _feas_search_blob(i)]
+    engineer_options = sorted({
+        ((i.get("assigned_engineer", "") or "-").split("@")[0]).replace(".", " ").title()
+        for i in line_item_ideas
+    })
+    selected_engineers = st.multiselect(
+        "Automation Engineer",
+        engineer_options,
+        placeholder="All automation engineers",
+        key="feasibility_engineer_filter",
+    )
+    eng_rows = []
+    for i in line_item_ideas:
+        engineer_name = ((i.get("assigned_engineer", "") or "-").split("@")[0]).replace(".", " ").title()
+        if selected_engineers and engineer_name not in selected_engineers:
+            continue
+        fd = i.get("feasibility_data", {}) or {}
+        draft = fd.get("_draft", {})
+        eng_rows.append({
+            "Engineer": engineer_name,
+            "Idea": i.get("idea_name", ""),
+            "Category": i.get("category", ""),
+            "Status": i.get("status", "") + (" (Draft saved)" if draft else ""),
+            "Baseline (hrs)": fd.get("baseline_process_time", draft.get("baseline_process_time", "")),
+            "New Process (hrs)": fd.get("new_process_time", draft.get("new_process_time", "")),
+            "FTE": fd.get("fte", draft.get("fte", "")),
+            "Frequency": fd.get("freq", draft.get("freq", "")),
+            "ROI": round(float(i.get("roi", 0) or 0), 2),
+            "Priority": i.get("priority_label", ""),
+        })
+    if eng_rows:
+        st.dataframe(pd.DataFrame(eng_rows), use_container_width=True, hide_index=True, height=220)
+    elif q:
+        st.caption("No feasibility line items match your search.")
+    else:
+        st.caption("No feasibility line items yet.")
+
     if not assigned:
         st.info("No ideas pending feasibility study.")
         render_copyright(); return
+
+    if q:
+        assigned = [i for i in assigned if q in _feas_search_blob(i)]
+        if not assigned:
+            st.warning("No idea cards match your search.")
+            render_copyright(); return
 
     if ss("_feas_outlook_url"):
         url = ss("_feas_outlook_url"); lbl = ss("_feas_outlook_label","")
@@ -1741,37 +2070,82 @@ def page_feasibility():
         st.session_state.pop("_feas_outlook_url",None)
         st.session_state.pop("_feas_outlook_label",None)
 
+    if ss("_feas_invite_url"):
+        url = ss("_feas_invite_url"); lbl = ss("_feas_invite_label","")
+        st.markdown(f"""
+        <div class="idea-card" style="border-left:4px solid #7c3aed;">
+          📅 <b>Open the meeting invite in Outlook:</b><br>
+          <span style="color:#64748b;font-size:12px;">{lbl}</span><br>
+          <a href="{url}" target="_blank" class="outlook-btn" style="background:#7c3aed;">📅 Open Invite in Outlook</a>
+        </div>""", unsafe_allow_html=True)
+        st.session_state.pop("_feas_invite_url",None)
+        st.session_state.pop("_feas_invite_label",None)
+
     for idea in assigned:
+        fd = idea.get("feasibility_data", {}) or {}
+        draft = fd.get("_draft", {})
         with st.expander(f"💡 {idea.get('idea_name','(no name)')}  —  {idea.get('priority_label','')}"):
-            st.markdown(f"**Engineer:** {idea.get('assigned_engineer','-')}  |  "
-                        f"**PL/SPL:** {idea.get('pl_name','-')}  |  **Category:** {idea.get('category','-')}")
+            st.markdown(f"""
+            <div style="border-left:3px solid #1a4fad;padding:8px 12px;margin-bottom:10px;background:#f8fafc;border-radius:6px;">
+              <b>Idea ID:</b> {idea.get('id','')}<br>
+              <b>Submitted by:</b> {idea.get('name','-')} ({idea.get('submitter_email','-') or '-'})<br>
+              <b>Assigned Engineer:</b> {idea.get('assigned_engineer','-')}<br>
+              <b>PL / SPL:</b> {idea.get('pl_name','-')}<br>
+              <b>Category:</b> {idea.get('category','-')}
+            </div>""", unsafe_allow_html=True)
             if idea.get("delivery_date"):
                 st.caption(f"📅 Provisional delivery: {idea['delivery_date']}")
+            if draft:
+                st.caption("📝 A saved draft was found for this idea — the fields below are pre-filled from it.")
 
             with st.form(f"feas_{idea['id']}"):
                 st.markdown("##### ROI Calculator")
                 col1,col2,col3 = st.columns(3)
                 with col1:
-                    baseline = st.number_input("Baseline Process Time (hrs)", min_value=0.0, step=0.1, key=f"b_{idea['id']}")
+                    baseline = st.number_input("Baseline Process Time (hrs)", min_value=0.0, step=0.1,
+                                                value=float(draft.get("baseline_process_time", 0) or 0), key=f"b_{idea['id']}")
                 with col2:
-                    newp = st.number_input("New Process Time (hrs)", min_value=0.0, step=0.1, key=f"n_{idea['id']}")
+                    newp = st.number_input("New Process Time (hrs)", min_value=0.0, step=0.1,
+                                           value=float(draft.get("new_process_time", 0) or 0), key=f"n_{idea['id']}")
                 with col3:
-                    fte    = st.number_input("FTE Count", min_value=0.0, step=0.1, key=f"f_{idea['id']}")
+                    fte = st.number_input("FTE Count", min_value=0.0, step=0.1,
+                                          value=float(draft.get("fte", 0) or 0), key=f"f_{idea['id']}")
                 col4,col5 = st.columns(2)
                 with col4:
-                    eng_ef = st.number_input("Automation Effort (hrs)", min_value=0.01, step=0.5, value=1.0, key=f"e_{idea['id']}")
-                    freq     = st.selectbox("Frequency", list(FREQ_MULT.keys()), key=f"fr_{idea['id']}")
+                    eng_ef = st.number_input("Automation Effort (hrs)", min_value=0.01, step=0.5,
+                                             value=float(draft.get("eng", 1.0) or 1.0), key=f"e_{idea['id']}")
+                    freq_opts = list(FREQ_MULT.keys())
+                    freq_idx = freq_opts.index(draft["freq"]) if draft.get("freq") in freq_opts else 0
+                    freq = st.selectbox("Frequency", freq_opts, index=freq_idx, key=f"fr_{idea['id']}")
                 with col5:
-                    auto_cat = st.selectbox("Automation Category *", AUTO_CATS, key=f"ac_{idea['id']}")
-                comments = st.text_area("Comments / Observations", key=f"co_{idea['id']}")
+                    ac_idx = AUTO_CATS.index(draft["automation_category"]) if draft.get("automation_category") in AUTO_CATS else 0
+                    auto_cat = st.selectbox("Automation Category *", AUTO_CATS, index=ac_idx, key=f"ac_{idea['id']}")
+                comments = st.text_area("Comments / Observations", value=draft.get("comments", ""), key=f"co_{idea['id']}")
                 # Compute per-occurrence savings: baseline - new process time
                 per_occurrence = 0.0
                 if baseline and baseline > newp:
                     per_occurrence = baseline - newp
-                annual_saved = per_occurrence * fte * FREQ_MULT.get(freq, FREQ_MULT["Daily"])
+                annual_saved = per_occurrence * FREQ_MULT.get(freq, FREQ_MULT["Daily"])
                 roi = round((annual_saved / eng_ef) if eng_ef else 0.0, 2)
                 st.info(f"📈 Computed ROI: **{roi}**  —  Savings per occurrence: {per_occurrence} hrs  —  Annual saved hrs: {annual_saved:,.1f}")
-                if st.form_submit_button("✅ Submit Feasibility & Notify PL via Outlook"):
+
+                bcol1, bcol2 = st.columns(2)
+                with bcol1:
+                    save_clicked = st.form_submit_button("💾 Save Draft", use_container_width=True)
+                with bcol2:
+                    submit_clicked = st.form_submit_button("✅ Submit Feasibility & Notify PL via Outlook", use_container_width=True)
+
+                if save_clicked:
+                    fd_next = dict(fd)
+                    fd_next["_draft"] = {
+                        "baseline_process_time": baseline, "new_process_time": newp, "fte": fte,
+                        "eng": eng_ef, "freq": freq, "automation_category": auto_cat, "comments": comments,
+                    }
+                    update_idea(idea["id"], {"feasibility_data": fd_next})
+                    st.success("💾 Draft saved — status stays **Assigned**. Come back anytime to finish and submit.")
+                    st.rerun()
+
+                if submit_clicked:
                     vsm_date = next_workday(date.today()+timedelta(days=1))
                     qi = compute_delivery(all_ideas, idea.get("assigned_engineer",""), {**idea,"roi":roi})
                     update_idea(idea["id"],{
@@ -1798,6 +2172,50 @@ def page_feasibility():
                         f"Notify PL/SPL ({idea.get('pl_name','')}) — Feasibility complete for {idea.get('idea_name','')}")
                     st.success(f"✅ Submitted. ROI: {roi} | VSM: {fmt_d(vsm_date)}. Click Outlook above to notify PL/SPL.")
                     st.rerun()
+
+            with st.expander("📅 Schedule a Meeting"):
+                participants_map = {
+                    "Idea Submitter": idea.get("submitter_email", ""),
+                    "Assigned Engineer": idea.get("assigned_engineer", ""),
+                    "PL / SPL": idea.get("pl_name", ""),
+                }
+                valid_participants = {k: v for k, v in participants_map.items() if is_email(v)}
+                if not valid_participants:
+                    st.caption("No valid participant emails on file for this idea yet.")
+                else:
+                    mcol1, mcol2, mcol3 = st.columns(3)
+                    with mcol1:
+                        m_date = st.date_input("Meeting Date", value=date.today()+timedelta(days=1), key=f"md_{idea['id']}")
+                    with mcol2:
+                        m_time = st.time_input("Meeting Time", key=f"mt_{idea['id']}")
+                    with mcol3:
+                        m_dur = st.selectbox("Duration (mins)", [15,30,45,60,90], index=1, key=f"mdur_{idea['id']}")
+                    m_attendees = st.multiselect("Participants", list(valid_participants.keys()),
+                                                  default=list(valid_participants.keys()), key=f"matt_{idea['id']}")
+                    m_remarks = st.text_area("Remarks", key=f"mrem_{idea['id']}", placeholder="Agenda / notes for this meeting")
+                    if st.button("📅 Schedule Meeting", key=f"msched_{idea['id']}"):
+                        if not m_attendees:
+                            st.error("Select at least one participant.")
+                        else:
+                            start_dt = datetime.combine(m_date, m_time)
+                            end_dt = start_dt + timedelta(minutes=int(m_dur))
+                            emails = [valid_participants[p] for p in m_attendees]
+                            body = f"""Meeting regarding: {idea.get('idea_name','')}
+
+Idea ID   : {idea.get('id','')}
+Category  : {idea.get('category','-')}
+Engineer  : {idea.get('assigned_engineer','-')}
+PL / SPL  : {idea.get('pl_name','-')}
+
+Remarks:
+{m_remarks or '-'}"""
+                            invite_url = build_calendar_invite_link(
+                                f"[Turbo Drive] Meeting — {idea.get('idea_name','')}", body, start_dt, end_dt, emails)
+                            st.session_state["_feas_invite_url"] = invite_url
+                            st.session_state["_feas_invite_label"] = (
+                                f"{fmt_d(m_date)} {m_time.strftime('%H:%M')} · {', '.join(m_attendees)}")
+                            st.success("Meeting invite ready — click 📅 Open Invite in Outlook above.")
+                            st.rerun()
     render_copyright()
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1880,20 +2298,44 @@ def page_approval():
 def page_dashboard():
     page_header("Dashboard ")
 
-    # ── VIEW SELECTOR (segmented control) ─────────────────────────────────
-    dashboard_view = st.segmented_control(
-        "Explore Views",
-        ["Overview", "Analytics", "Idea Management", "Workflow"],
-        default="Overview",
-        key="dashboard_view",
-    )
-
+    # ── DATA FIRST (filters need option lists before the row renders) ─────
     all_ideas_raw = get_all()
     if not all_ideas_raw:
         st.info("No ideas yet.")
         render_copyright(); return
 
-    # ── LIVE USER BADGE — top-right ───────────────────────────────────────
+    all_otps = sorted({r.get("otp","") for r in get_otp_list() if r.get("otp","")})
+    all_pls  = sorted({i.get("pl_name","") for i in all_ideas_raw if i.get("pl_name","")})
+    all_regs = sorted({i.get("region","")   for i in all_ideas_raw if i.get("region","")})
+
+    for k in ["f_otp", "f_pl", "f_reg"]:
+        if k not in st.session_state:
+            st.session_state[k] = []
+
+    # ── VIEW SELECTOR + COMPACT FILTERS — one dense, baseline-aligned row ──
+    # Both the segmented control and the multiselects have their own labels
+    # collapsed so nothing pushes one control lower than the others; a single
+    # shared caption above the row keeps the "Explore Views" context.
+    st.caption("Explore Views & Filters")
+    st.markdown('<div class="dash-toprow">', unsafe_allow_html=True)
+    vc, fc1, fc2, fc3 = st.columns([1.7, 1, 1, 1])
+    with vc:
+        dashboard_view = st.segmented_control(
+            "Explore Views",
+            ["Overview", "Analytics", "Idea Management", "Workflow"],
+            default="Overview",
+            key="dashboard_view",
+            label_visibility="collapsed",
+        )
+    with fc1:
+        st.multiselect("OTP", all_otps, key="f_otp", placeholder="All OTPs", label_visibility="collapsed")
+    with fc2:
+        st.multiselect("PL/SPL", all_pls, key="f_pl", placeholder="All PLs", label_visibility="collapsed")
+    with fc3:
+        st.multiselect("Region", all_regs, key="f_reg", placeholder="All regions", label_visibility="collapsed")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── LIVE USER BADGE (registered/active counts, used elsewhere on page) ─
     users            = get_users()
     total_registered = len(users)
     active_count     = 1
@@ -1911,39 +2353,17 @@ def page_dashboard():
     except Exception:
         pass
 
-    # ── FILTER BAR ────────────────────────────────────────────────────────
-    all_pls  = sorted({i.get("pl_name","") for i in all_ideas_raw if i.get("pl_name","")})
-    all_regs = sorted({i.get("region","")   for i in all_ideas_raw if i.get("region","")})
-    all_cats = CATEGORIES
-
-    for k in ["f_cat", "f_pl", "f_reg"]:
-        if k not in st.session_state:
-            st.session_state[k] = []
-
-    # Persistent dashboard filter row (visible across all dashboard views)
-    with st.container(border=True):
-        fc1, fc2, fc3, fc4 = st.columns([1.0, 1.0, 1.0, 0.5])
-        with fc1:
-            st.multiselect("Category", all_cats, key="f_cat",
-                           placeholder="All categories", label_visibility="collapsed")
-        with fc2:
-            st.multiselect("PL/SPL", all_pls, key="f_pl",
-                           placeholder="All PLs", label_visibility="collapsed")
-        with fc3:
-            st.multiselect("Region", all_regs, key="f_reg",
-                           placeholder="All regions", label_visibility="collapsed")
-
-    f_cat = st.session_state.get("f_cat", [])
+    f_otp = st.session_state.get("f_otp", [])
     f_pl  = st.session_state.get("f_pl", [])
     f_reg = st.session_state.get("f_reg", [])
 
     # Apply filters — interlinked (all three narrow the same set)
     ideas = all_ideas_raw
-    if f_cat: ideas = [i for i in ideas if i.get("category","") in f_cat]
+    if f_otp: ideas = [i for i in ideas if i.get("otp","") in f_otp]
     if f_pl:  ideas = [i for i in ideas if i.get("pl_name","") in f_pl]
     if f_reg: ideas = [i for i in ideas if i.get("region","") in f_reg]
 
-    active_filters = bool(f_cat or f_pl or f_reg)
+    active_filters = bool(f_otp or f_pl or f_reg)
     if active_filters:
         st.caption(f"📌 Showing **{len(ideas)}** of **{len(all_ideas_raw)}** ideas after filters.")
 
@@ -1976,10 +2396,14 @@ def page_dashboard():
     if dashboard_view == "Overview":
         # ── KPI METRICS (single horizontal row — enhanced: animated counters,
         #    gradient top accent bars, mini sparklines, glass sweep, hover focus) ──
-        with st.container(border=True):
-            _render_kpi_row(total, completed, completed_pct, cust_hrs, int_hrs, cust_roi, int_roi)
+        # No st.container(border=True) here on purpose — that bordered
+        # container was the source of the visible black outline around the
+        # KPI cards; the cards already carry their own soft glass shadow.
+        _render_kpi_row(total, completed, completed_pct, cust_hrs, int_hrs, cust_roi, int_roi)
 
-        # ── AUTOMATION & AI CATEGORY BREAKDOWN (canvas resized to 380) ─────
+        # ── AUTOMATION & AI CATEGORY BREAKDOWN (pulled up right under the
+        #    KPI row now that the bordered-container gap is gone) ──────────
+        st.markdown('<div style="margin-top:-10px;"></div>', unsafe_allow_html=True)
         st.markdown("##### 🤖 Automation & AI Category Breakdown")
         auto_total_ideas = len([i for i in ideas if i.get("automation_category") in AUTOMATION_CATS])
         ai_total_ideas   = len([i for i in ideas if i.get("automation_category") in AI_CATS])
@@ -2238,87 +2662,89 @@ html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'I
     # PAGE 2 — ANALYTICS
     # ══════════════════════════════════════════════════════════════════════
     elif dashboard_view == "Analytics":
-        
+
         st.markdown("##### 📈 Analytics")
-        
-        
+
+
         chart1, chart2, chart3 = st.columns([1, 1.2, 1])
-        
+
 
         with chart1:
-            # ── Status Pie (moved from original) ──
-            st.markdown("<span style='font-size:clamp(10px,1vw,13px);font-weight:600;'>Ideas by Status</span>", unsafe_allow_html=True)
+            # ── Status Pie — larger, more legible ──
+            st.markdown("<span style='font-size:clamp(12px,1.15vw,15px);font-weight:700;'>Ideas by Status</span>", unsafe_allow_html=True)
             status_labels = [s for s in STATUSES]
             status_vals   = [cnt(s) for s in STATUSES]
             status_cols   = [STATUS_COLORS.get(s, "#888") for s in STATUSES]
             st_echarts({
-                "tooltip": {"trigger": "item", "formatter": "{b}: {c} ({d}%)"},
+                "backgroundColor": "transparent",
+                "tooltip": {"trigger": "item", "formatter": "{b}: {c} ({d}%)", "textStyle": {"fontSize": 13}},
+                
                 "series": [{
                     "type": "pie",
-                    "radius": ["35%", "72%"],
+                    "radius": ["38%", "78%"],
                     "center": ["50%", "42%"],
                     "data": [{"value": v, "name": l, "itemStyle": {"color": c}} for v, l, c in zip(status_vals, status_labels, status_cols)],
                     "label": {
                         "show": True,
-                        "fontSize": 9,
-                        "formatter": "{b}: {c}",
+                        "fontSize": 13,
+                        "fontWeight": 600,
+                        "formatter": "{b}\n{c}",
                         "color": "#111827",
+                        "lineHeight": 16,
                     },
-                    "labelLine": {"length": 5, "length2": 3},
+                    "labelLine": {"length": 10, "length2": 8},
+                    "itemStyle": {"borderColor": "#fff", "borderWidth": 2},
                 }]
-            }, height="320px")
+            }, height="440px")
 
         with chart2:
-            # ── Project → Customer Hierarchy (grouped BAR chart — Idea Count per Customer per Project) ──
-            st.markdown("<span style='font-size:clamp(10px,1vw,13px);font-weight:600;'>Project → Customer (Hierarchy)</span>", unsafe_allow_html=True)
-            project_customer_map = {}
-            project_customer_roi = {}
+            # ── Customer → Project Hierarchy (each customer appears once,
+            #    all its projects grouped underneath as the inner ring) ──
+            st.markdown("<span style='font-size:clamp(12px,1.15vw,15px);font-weight:700;'>Customer → Project (Hierarchy)</span>", unsafe_allow_html=True)
+            customer_project_map = {}
             for i in ideas:
                 project = i.get("project", "") or "Others"
                 customer = i.get("customer", "") or "Unknown"
-                project_customer_map.setdefault(project, {}).setdefault(customer, 0)
-                project_customer_map[project][customer] += 1
-                project_customer_roi.setdefault(project, {}).setdefault(customer, 0.0)
-                project_customer_roi[project][customer] += float(i.get("roi",0) or 0)
+                customer_project_map.setdefault(customer, {}).setdefault(project, 0)
+                customer_project_map[customer][project] += 1
 
-            projects  = list(project_customer_map.keys())
-            customers = []
-            for pc in project_customer_map.values():
-                for c in pc.keys():
-                    if c not in customers:
-                        customers.append(c)
-
-            CUSTOMER_BAR_COLORS = {
-                "Rolls-Royce": "#1a4fad",
-                "Unknown": "#64748b",
-            }
-            series = []
-            for c in customers:
-                color = CUSTOMER_BAR_COLORS.get(c, "#0ea5e9")
-                series.append({
-                    "name": c,
-                    "type": "bar",
-                    "data": [project_customer_map.get(p, {}).get(c, 0) for p in projects],
-                    "itemStyle": {"color": color},
-                    "label": {"show": True, "position": "top", "fontSize": 9, "color": "#111827"},
+            CUSTOMER_RING_COLORS = ["#1a4fad","#7c3aed","#059669","#0d9488","#0ea5e9","#b45309","#dc2626","#0891b2"]
+            sunburst_data = []
+            for idx, (cust, proj_map) in enumerate(customer_project_map.items()):
+                children = [{"name": p, "value": v} for p, v in proj_map.items()]
+                sunburst_data.append({
+                    "name": cust,
+                    "itemStyle": {"color": CUSTOMER_RING_COLORS[idx % len(CUSTOMER_RING_COLORS)]},
+                    "children": children,
                 })
 
             st_echarts({
-                "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}},
-                "legend": {"bottom": 0, "textStyle": {"fontSize": 9}},
-                "grid": {"left": "6%", "right": "4%", "top": "8%", "bottom": "18%", "containLabel": True},
-                "xAxis": {
-                    "type": "category",
-                    "data": projects,
-                    "axisLabel": {"rotate": 20, "fontSize": 9},
-                },
-                "yAxis": {",type": "value", "minInterval": 1},
-                "series": series,
-            }, height="320px")
+                "backgroundColor": "transparent",
+                "tooltip": {"trigger": "item", "formatter": "{b}: {c} idea(s)", "textStyle": {"fontSize": 13}},
+                "series": [{
+                    "type": "sunburst",
+                    "radius": ["14%", "90%"],
+                    "center": ["50%", "50%"],
+                    "data": sunburst_data,
+                    "sort": None,
+                    "emphasis": {"focus": "ancestor"},
+                    "label": {"rotate": "radial", "fontSize": 12, "color": "#fff", "minAngle": 8, "fontWeight": 600},
+                    "levels": [
+                        {},
+                        {"r0": "14%", "r": "50%",
+                         "itemStyle": {"borderWidth": 2, "borderColor": "#fff"},
+                         "label": {"fontSize": 14, "fontWeight": 800}},
+                        {"r0": "50%", "r": "90%",
+                         "itemStyle": {"borderWidth": 1, "borderColor": "#fff"},
+                         "label": {"fontSize": 12, "fontWeight": 600}},
+                    ],
+                }]
+            }, height="400px")
 
         with chart3:
-            # ── Region World Map (moved from original) ──
-            st.markdown("<span style='font-size:clamp(10px,1vw,13px);font-weight:600;'>Region-World Map</span>", unsafe_allow_html=True)
+            # ── Region World Map — choropleth, with a readable legend and
+            #    exact counts labelled directly on the active regions ──────
+            st.markdown("<span style='font-size:clamp(12px,1.15vw,15px);font-weight:700;'>Region — World Map</span>", unsafe_allow_html=True)
             region_data = {}
             for i in ideas:
                 r = (i.get("region","") or "").strip()
@@ -2337,45 +2763,107 @@ html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'I
                 "UK": region_data.get("UK", {"count":0})["count"],
                 "Germany": region_data.get("GERMANY", {"count":0})["count"],
             }
-            max_count = max(region_counts.values()) or 1
-
-            def _highlight_size(c):
-                return 90 + round((c / max_count) * 70) if c else 60
-
-            REGION_POS = {
-                "India": {"top": "37.8%", "left": "71.9%"},
-                "USA": {"top": "28.3%", "left": "22.8%"},
-                "UK": {"top": "20.0%", "left": "49.4%"},
-                "Germany": {"top": "21.7%", "left": "52.8%"},
+            region_roi = {
+                "India": round(region_data.get("INDIA", {"roi":0.0})["roi"], 1),
+                "USA": round(region_data.get("USA", {"roi":0.0})["roi"], 1),
+                "UK": round(region_data.get("UK", {"roi":0.0})["roi"], 1),
+                "Germany": round(region_data.get("GERMANY", {"roi":0.0})["roi"], 1),
             }
             active_regions = {k: v for k, v in region_counts.items() if v > 0}
-            pins_html = "".join(
-                f'<div class="region-highlight" style="top:{REGION_POS[k]["top"]};left:{REGION_POS[k]["left"]};width:{_highlight_size(v)}px;height:{_highlight_size(v)}px;"></div>'
-                f'<div class="region-pin" style="top:{REGION_POS[k]["top"]};left:{REGION_POS[k]["left"]};" title="{k}: {v} idea(s)">{v}</div>'
-                for k, v in active_regions.items()
-            )
+            total_region_count = sum(region_counts.values()) or 1
 
-            map_html = f"""
-            <style>
-              .region-map-shell {{position:relative;width:100%;aspect-ratio:1/1;max-height:320px;min-height:260px;border-radius:22px;overflow:hidden;background:#0b1222;border:1px solid rgba(255,255,255,.08);box-shadow:0 20px 50px rgba(0,0,0,.25);}}
-              .region-map-shell .region-map-bg {{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.85;filter:invert(1) brightness(1.6);z-index:0;}}
-              .region-map-shell .region-overlay {{position:relative;z-index:1;padding:16px;display:grid;grid-template-rows:auto 1fr;gap:12px;}}
-              .region-map-shell .region-header {{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:0 6px;}}
-              .region-map-shell .region-title {{font-size:14px;font-weight:700;color:#f8fafc;}}
-              .region-map-shell .region-subtitle {{font-size:12px;color:rgba(248,250,252,.72);}}
-              .region-map-shell .region-highlight {{position:absolute;border-radius:999px;transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(250,204,21,.55) 0%,rgba(250,204,21,.18) 55%,rgba(250,204,21,0) 75%);animation:region-pulse 2.4s ease-in-out infinite;pointer-events:none;z-index:2;}}
-              @keyframes region-pulse {{0%,100% {{opacity:.75;}} 50% {{opacity:1;}}}}
-              .region-map-shell .region-pin {{position:absolute;transform:translate(-50%,-50%);font-size:13px;font-weight:800;color:#facc15;text-shadow:0 0 5px rgba(0,0,0,.95),0 0 2px rgba(0,0,0,.95);pointer-events:none;z-index:3;}}
-            </style>
-            <div class="region-map-shell">
-              <img class="region-map-bg" src="https://upload.wikimedia.org/wikipedia/commons/8/80/World_map_-_low_resolution.svg" alt="World map" />
-              <div class="region-overlay"><div class="region-header"><div><div class="region-title"></div><div class="region-subtitle"></div></div></div></div>
-              {pins_html}
-            </div>
-            """
-            st.markdown(map_html, unsafe_allow_html=True)
+            # This map fetches real country boundary GeoJSON at render time and
+            # matches each country by name (fuzzy keyword match) to our region
+            # values — so pins/colours land exactly on the correct country
+            # automatically, with no hand-picked pixel coordinates involved.
+            _region_map_html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"/>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<style>
+  *{{margin:0;padding:0;box-sizing:border-box;}}
+  html,body{{background:transparent;font-family:'Inter',sans-serif;}}
+  #wmap{{width:100%;height:420px;border-radius:16px;overflow:hidden;background:#0b1222;}}
+  #wmap-msg{{color:#94a3b8;font-size:11px;padding:16px;text-align:center;}}
+</style></head>
+<body>
+<div id="wmap"><div id="wmap-msg">Loading map…</div></div>
+<script>
+  var valueByRegion = {json.dumps(region_counts)};
+  var roiByRegion   = {json.dumps(region_roi)};
+  var totalCount    = {total_region_count};
+  var regionKeywords = {{
+    'India':   ['india'],
+    'USA':     ['united states', 'usa'],
+    'UK':      ['united kingdom', 'u.k.'],
+    'Germany': ['germany']
+  }};
+  fetch('https://cdn.jsdelivr.net/gh/apache/echarts-www@master/asset/map/json/world.json')
+    .then(function(r){{ return r.json(); }})
+    .then(function(geoJson){{
+      echarts.registerMap('world', geoJson);
+      var mapData = (geoJson.features || []).map(function(f){{
+        var nm = (f.properties && (f.properties.name || f.properties.NAME)) || '';
+        var lower = nm.toLowerCase();
+        var val = 0, roi = 0;
+        for (var key in regionKeywords) {{
+          if (regionKeywords[key].some(function(kw){{ return lower.indexOf(kw) >= 0; }})) {{
+            val = valueByRegion[key] || 0;
+            roi = roiByRegion[key] || 0;
+          }}
+        }}
+        var entry = {{ name: nm, value: val, roi: roi }};
+        if (val > 0) {{
+          entry.label = {{
+            show: true, formatter: nm + '\\n' + val, fontSize: 12, fontWeight: 700,
+            color: '#0f172a', backgroundColor: '#ffffff', padding: [4, 8],
+            borderRadius: 6, lineHeight: 15
+          }};
+        }}
+        return entry;
+      }});
+      var maxVal = Math.max.apply(null, Object.keys(valueByRegion).map(function(k){{return valueByRegion[k];}}).concat([1]));
+      document.getElementById('wmap').innerHTML = '';
+      var chart = echarts.init(document.getElementById('wmap'));
+      chart.setOption({{
+        backgroundColor: 'transparent',
+        tooltip: {{
+          trigger: 'item',
+          textStyle: {{ fontSize: 13 }},
+          formatter: function(p){{
+            if (!p.value) return p.name + '<br/>No ideas yet';
+            var pct = totalCount ? ((p.value / totalCount) * 100).toFixed(1) : 0;
+            return '<b>' + p.name + '</b><br/>Ideas: <b>' + p.value + '</b> (' + pct + '%)<br/>ROI: <b>' + (p.data.roi||0) + '</b>';
+          }}
+        }},
+        visualMap: {{
+          min: 0, max: maxVal, show: true, calculable: true,
+          orient: 'horizontal', left: 'center', bottom: 6,
+          text: ['High', 'Low'],
+          textStyle: {{ color: '#e2e8f0', fontSize: 11, fontWeight: 600 }},
+          inRange: {{ color: ['#1e293b', '#0891b2', '#22d3ee', '#facc15'] }}
+        }},
+        series: [{{
+          type: 'map', map: 'world', roam: true, zoom: 1.15,
+          emphasis: {{ label: {{ show: true, color: '#0f172a', fontWeight: 700 }}, itemStyle: {{ areaColor: '#fbbf24' }} }},
+          itemStyle: {{ areaColor: '#111827', borderColor: '#334155', borderWidth: 0.6 }},
+          label: {{ show: false }},
+          data: mapData
+        }}]
+      }});
+      window.addEventListener('resize', function(){{ chart.resize(); }});
+    }})
+    .catch(function(err){{
+      document.getElementById('wmap-msg').textContent = 'Map data unavailable — check network access.';
+    }});
+</script>
+</body></html>"""
+            st.components.v1.html(_region_map_html, height=400, scrolling=False)
+
             if active_regions:
-                st.caption("📍 " + "  ·  ".join(f"**{k}**: {v} idea(s)" for k, v in active_regions.items()))
+                st.caption("📍 " + "  ·  ".join(
+                    f"**{k}**: {v} idea(s) ({round(v/total_region_count*100,1)}%)"
+                    for k, v in active_regions.items()
+                ))
             else:
                 st.caption("No ideas with a region assigned yet.")
             if no_region_count:
@@ -2387,9 +2875,14 @@ html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'I
         def rs(r): return len([i for i in ideas if i.get("status")=="Rejected" and i.get("rejection_reason")==r])
         def add_label_boxes(node):
             color = node.get("itemStyle",{}).get("color","#FFFFFF")
+            # Larger, cleaner label boxes — bigger font, generous padding,
+            # a touch of letter-spacing and a subtle border so each node
+            # reads clearly at normal zoom without a jagged edge.
             node["label"] = {"show":True,"backgroundColor":color,"color":"#FFFFFF",
-                             "borderRadius":5,"padding":[4,8],"position":"inside",
-                             "align":"center","fontSize":10,"fontWeight":"bold"}
+                             "borderRadius":7,"padding":[8,14],"position":"inside",
+                             "align":"center","fontSize":14,"fontWeight":"bold",
+                             "fontFamily":"Inter, sans-serif","lineHeight":18,
+                             "borderColor":"rgba(255,255,255,.35)","borderWidth":1}
             for child in node.get("children",[]): add_label_boxes(child)
         tree_data = {
             "name":f"Ideation ({total})","itemStyle":{"color":"#1a4fad"},
@@ -2412,17 +2905,20 @@ html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'I
         add_label_boxes(tree_data)
         st_echarts({
             "backgroundColor":"transparent",
-            "tooltip":{"trigger":"item","triggerOn":"mousemove"},
+            "tooltip":{"trigger":"item","triggerOn":"mousemove","textStyle":{"fontSize":13}},
             "series":[{"type":"tree","data":[tree_data],
-                       "top":"5%","left":"7%","bottom":"5%","right":"15%",
+                       "top":"8%","left":"12%","bottom":"8%","right":"22%",
                        "orient":"LR",   # horizontal flow
                        "symbol":"rect","symbolSize":1,
-                       "lineStyle":{"color":"#f97316","width":2},
-                       "label":{"position":"left","verticalAlign":"middle","align":"right","fontSize":10},
-                       "leaves":{"label":{"position":"right","verticalAlign":"middle","align":"left","fontSize":9}},
+                       "nodeGap": 32,"layerPadding": 90,
+                       "lineStyle":{"color":"#f97316","width":2.5,"curveness":0.35},
+                       "label":{"position":"left","verticalAlign":"middle","align":"right","fontSize":14},
+                       "leaves":{"label":{"position":"right","verticalAlign":"middle","align":"left","fontSize":13}},
                        "emphasis":{"focus":"descendant"},
                        "expandAndCollapse":True,"animationDuration":550,"initialTreeDepth":2}]
-        }, height="330px")
+        }, height="420px")
+
+
 
     # ══════════════════════════════════════════════════════════════════════
     # PAGE 3 — IDEA MANAGEMENT
@@ -2490,225 +2986,796 @@ html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'I
             render_kanban_board(ideas)
 
     # ══════════════════════════════════════════════════════════════════════
-    # PAGE 4 — WORKFLOW  (horizontal flow diagram — fits dashboard view)
-    # Moved from the sidebar "Workflow" page into the dashboard tab.
+    # PAGE 4 — WORKFLOW  (full vertical flow diagram, scrollable — not
+    # squeezed into a horizontal layout; this is the same detailed diagram
+    # used on the standalone Workflow page, shown here inside the tab.)
     # ══════════════════════════════════════════════════════════════════════
     elif dashboard_view == "Workflow":
         _wf_html = """<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"/>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>EFS Turbo Drive — Automation Workflow</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;}
-html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;overflow:hidden;}
-.wrap{width:100%;padding:8px;}
-.wf-title{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:800;margin-bottom:4px;
-  background:linear-gradient(100deg,#00D4FF,#8B5CF6 55%,#10B981);
-  -webkit-background-clip:text;background-clip:text;color:transparent;}
-.wf-sub{font-size:10px;color:#475569;margin-bottom:6px;}
-svg{width:100%;height:auto;display:block;}
-@keyframes gPulse{0%,100%{filter:drop-shadow(0 0 4px rgba(0,212,255,.3));}50%{filter:drop-shadow(0 0 12px rgba(0,212,255,.7));}}
-@keyframes vPulse{0%,100%{filter:drop-shadow(0 0 4px rgba(139,92,246,.3));}50%{filter:drop-shadow(0 0 12px rgba(139,92,246,.7));}}
-@keyframes gYPulse{0%,100%{filter:drop-shadow(0 0 4px rgba(16,185,129,.3));}50%{filter:drop-shadow(0 0 12px rgba(16,185,129,.7));}}
-</style></head><body>
-<div class="wrap">
-<div class="wf-title">🔄 EFS Turbo Drive — Automation Workflow</div>
-<div class="wf-sub">Agile · Sprint-based · Continuous Improvement &nbsp;|&nbsp; Sensitivity: C1-Internal</div>
-<svg id="wf" viewBox="0 0 1850 640" xmlns="http://www.w3.org/2000/svg">
-<defs>
-  <marker id="ab" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0.5 L0,6.5 L7,3.5z" fill="#00D4FF"/></marker>
-  <marker id="av" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0.5 L0,6.5 L7,3.5z" fill="#8B5CF6"/></marker>
-  <marker id="ag" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0.5 L0,6.5 L7,3.5z" fill="#10B981"/></marker>
-  <marker id="ar" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto"><path d="M0,0.5 L0,6.5 L7,3.5z" fill="#ef4444"/></marker>
-  <filter id="fb" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-  <filter id="fv" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-  <filter id="fg" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-  <linearGradient id="cylg" x1="0%" y1="0%" x2="100%" y2="0%">
-    <stop offset="0%" stop-color="#021a30"/><stop offset="45%" stop-color="#0a2d4a"/><stop offset="100%" stop-color="#021a30"/>
-  </linearGradient>
-  <linearGradient id="loopg" x1="0%" y1="100%" x2="0%" y2="0%">
-    <stop offset="0%" stop-color="#8B5CF6"/><stop offset="50%" stop-color="#00D4FF"/><stop offset="100%" stop-color="#10B981"/>
-  </linearGradient>
-</defs>
+html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-height:100vh;overflow-x:hidden;}
+#bg{position:fixed;inset:0;z-index:0;opacity:.28;pointer-events:none;}
 
-<!-- ═══════ ROW 1 — MAIN PIPELINE (left → right) ═══════ -->
-<!-- 1. Turbo Drive cylinder -->
-<g filter="url(#fb)" style="animation:gPulse 3s ease-in-out infinite;">
-  <ellipse cx="100" cy="95" rx="65" ry="16" fill="#0a2d4a" stroke="#00D4FF" stroke-width="1.8"/>
-  <rect x="35" y="95" width="130" height="60" fill="url(#cylg)"/>
-  <ellipse cx="100" cy="155" rx="65" ry="16" fill="#071824" stroke="rgba(0,212,255,.5)" stroke-width="1.5"/>
-  <line x1="35" y1="95" x2="35" y2="155" stroke="#00D4FF" stroke-width="1.8"/>
-  <line x1="165" y1="95" x2="165" y2="155" stroke="#00D4FF" stroke-width="1.8"/>
-  <text x="100" y="130" text-anchor="middle" font-family="Space Grotesk" font-size="15" font-weight="800" fill="#00D4FF">Turbo Drive</text>
-  <text x="100" y="148" text-anchor="middle" font-family="Inter" font-size="9" fill="rgba(0,212,255,.6)">IDEA INTAKE</text>
-</g>
+/* ── Page shell ── */
+.page{position:relative;z-index:1;padding:32px 40px 72px;max-width:1120px;margin:0 auto;}
 
-<!-- Arrow TD → Screening -->
-<line x1="180" y1="125" x2="228" y2="125" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
-<circle r="5" fill="#00D4FF"><animateMotion dur="1.4s" repeatCount="indefinite" path="M180,125 H228"/><animate attributeName="opacity" values="0;1;1;0" dur="1.4s" repeatCount="indefinite"/></circle>
+/* ── Header ── */
+.hdr{display:flex;align-items:flex-start;justify-content:space-between;
+     margin-bottom:36px;padding-bottom:22px;
+     border-bottom:1px solid rgba(0,212,255,.13);}
+.hdr-left{}
+.badge{display:inline-block;padding:5px 13px;border-radius:20px;
+       background:rgba(0,212,255,.08);border:1px solid rgba(0,212,255,.28);
+       font-family:'Space Grotesk',sans-serif;font-size:10px;font-weight:700;
+       letter-spacing:2px;color:#00D4FF;text-transform:uppercase;margin-bottom:10px;}
+.hdr-title{font-family:'Space Grotesk',sans-serif;font-size:clamp(20px,2.6vw,30px);
+           font-weight:800;background:linear-gradient(100deg,#00D4FF,#8B5CF6 55%,#10B981);
+           -webkit-background-clip:text;background-clip:text;color:transparent;line-height:1.2;}
+.hdr-sub{font-size:12px;color:#475569;margin-top:5px;}
+.legend{display:flex;flex-direction:column;gap:7px;align-items:flex-end;}
+.leg{display:flex;align-items:center;gap:7px;font-size:10.5px;color:#64748b;font-weight:500;}
+.ld{width:11px;height:11px;border-radius:3px;}
 
-<!-- 2. Initial Screening -->
-<g filter="url(#fv)">
-  <rect x="230" y="90" width="180" height="70" rx="12" fill="#110e28" stroke="#8B5CF6" stroke-width="1.8"/>
-  <text x="320" y="118" text-anchor="middle" font-family="Space Grotesk" font-size="13" font-weight="700" fill="#c4b5fd">🔍 Initial Screening</text>
-  <text x="320" y="136" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748b">PL/SPL Review · Category</text>
-</g>
+/* ── SVG wrapper ── */
+.svg-wrap{background:rgba(255,255,255,.016);border:1px solid rgba(0,212,255,.08);
+          border-radius:20px;padding:28px 20px;overflow:hidden;}
 
-<!-- Arrow Screening → Approved? -->
-<line x1="410" y1="125" x2="478" y2="125" stroke="#8B5CF6" stroke-width="2" marker-end="url(#av)"/>
+/* ── Bottom row cards ── */
+.outcome-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:22px;}
+.ocard{background:rgba(255,255,255,.03);border-radius:14px;padding:16px 18px;
+       border:1.5px solid rgba(255,255,255,.07);
+       display:flex;align-items:center;gap:13px;
+       transition:border-color .25s,box-shadow .25s;}
+.ocard:hover{border-color:rgba(0,212,255,.35);box-shadow:0 0 22px rgba(0,212,255,.12);}
+.ocard.v:hover{border-color:rgba(139,92,246,.35);box-shadow:0 0 22px rgba(139,92,246,.12);}
+.ocard.g:hover{border-color:rgba(16,185,129,.35);box-shadow:0 0 22px rgba(16,185,129,.12);}
+.ocard-icon{font-size:26px;flex-shrink:0;}
+.ocard-title{font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;}
+.ocard-sub{font-size:10px;color:#475569;margin-top:3px;line-height:1.5;}
 
-<!-- 3. Approved? diamond -->
-<g filter="url(#fv)" style="animation:vPulse 3.5s ease-in-out infinite 0.5s;">
-  <polygon points="540,85 600,125 540,165 480,125" fill="#0e0b20" stroke="#8B5CF6" stroke-width="2"/>
-  <text x="540" y="121" text-anchor="middle" font-family="Space Grotesk" font-size="11" font-weight="700" fill="#e2e8f0">Approved?</text>
-  <text x="540" y="137" text-anchor="middle" font-family="Space Grotesk" font-size="9" fill="#8B5CF6">PL/SPL Gate</text>
-</g>
+/* ── Step strip ── */
+.step-strip{display:flex;margin-top:22px;
+            background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);
+            border-radius:14px;overflow:hidden;}
+.step{flex:1;text-align:center;padding:12px 6px;
+      border-right:1px solid rgba(255,255,255,.05);}
+.step:last-child{border-right:none;}
+.step-n{font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:800;}
+.step-l{font-size:9px;color:#475569;margin-top:2px;font-weight:500;line-height:1.4;}
 
-<!-- Approved NO → Reject/Park 1 -->
-<path d="M480,165 V290 H390 V548" stroke="#ef4444" stroke-width="1.6" fill="none" stroke-dasharray="5 3" marker-end="url(#ar)" opacity=".8"/>
-<text x="430" y="205" font-family="Space Grotesk" font-size="9.5" font-weight="700" fill="#ef4444">NO</text>
+/* ── Footer ── */
+.foot{display:flex;justify-content:space-between;align-items:center;
+      margin-top:40px;padding-top:16px;border-top:1px solid rgba(255,255,255,.04);
+      font-size:10.5px;color:#1e293b;flex-wrap:wrap;gap:8px;}
 
-<!-- Approved YES → Business Impact -->
-<line x1="600" y1="125" x2="658" y2="125" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
-<text x="633" y="115" font-family="Space Grotesk" font-size="9" font-weight="700" fill="#10B981">YES</text>
+/* ── Animations ── */
+@keyframes gPulse{0%,100%{filter:drop-shadow(0 0 4px rgba(0,212,255,.3));}
+                  50%{filter:drop-shadow(0 0 12px rgba(0,212,255,.7));}}
+@keyframes vPulse{0%,100%{filter:drop-shadow(0 0 4px rgba(139,92,246,.3));}
+                  50%{filter:drop-shadow(0 0 12px rgba(139,92,246,.7));}}
+@keyframes spin{from{transform-origin:50% 50%;transform:rotate(0deg);}
+                to{transform-origin:50% 50%;transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div class="page">
 
-<!-- 4. Business Impact -->
-<g filter="url(#fb)">
-  <rect x="660" y="90" width="200" height="70" rx="12" fill="#061824" stroke="#00D4FF" stroke-width="1.8"/>
-  <text x="760" y="118" text-anchor="middle" font-family="Space Grotesk" font-size="13" font-weight="700" fill="#00D4FF">📊 Business Impact</text>
-  <text x="760" y="136" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748b">Value · Complexity · Priority</text>
-</g>
+  <!-- Header -->
+  <div class="hdr">
+    <div class="hdr-left">
+      <div class="badge">EFS · ALTEN Engineering Services</div>
+      <div class="hdr-title">Turbo Drive — Automation Workflow</div>
+      <div class="hdr-sub">Agile · Sprint-based · Continuous Improvement &nbsp;|&nbsp; Sensitivity: C1-Internal</div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="ld" style="background:#00D4FF;box-shadow:0 0 5px #00D4FF;"></div>Process / Action</div>
+      <div class="leg"><div class="ld" style="background:#8B5CF6;border-radius:50%;box-shadow:0 0 5px #8B5CF6;"></div>Decision Gate</div>
+      <div class="leg"><div class="ld" style="background:#10B981;box-shadow:0 0 5px #10B981;"></div>Outcome</div>
+      <div class="leg"><div class="ld" style="background:#ef4444;box-shadow:0 0 5px #ef4444;"></div>Reject / Park</div>
+    </div>
+  </div>
 
-<!-- Arrow Business → VSM Required? -->
-<line x1="860" y1="125" x2="918" y2="125" stroke="#8B5CF6" stroke-width="2" marker-end="url(#av)"/>
+  <!-- SVG Diagram -->
+  <div class="svg-wrap">
+  <svg id="wf" viewBox="0 0 1060 2450" xmlns="http://www.w3.org/2000/svg"
+       style="width:100%;height:auto;display:block;">
+  <defs>
+    <!-- Arrow markers -->
+    <marker id="ab" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+      <path d="M0,0.5 L0,6.5 L7,3.5z" fill="#00D4FF"/>
+    </marker>
+    <marker id="av" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+      <path d="M0,0.5 L0,6.5 L7,3.5z" fill="#8B5CF6"/>
+    </marker>
+    <marker id="ag" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+      <path d="M0,0.5 L0,6.5 L7,3.5z" fill="#10B981"/>
+    </marker>
+    <marker id="ar" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+      <path d="M0,0.5 L0,6.5 L7,3.5z" fill="#ef4444"/>
+    </marker>
+    <marker id="ao" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">
+      <path d="M0,0.5 L0,6.5 L7,3.5z" fill="#fb923c"/>
+    </marker>
 
-<!-- 5. VSM Required? diamond -->
-<g filter="url(#fv)" style="animation:vPulse 3.5s ease-in-out infinite 1s;">
-  <polygon points="980,85 1040,125 980,165 920,125" fill="#0e0b20" stroke="#8B5CF6" stroke-width="2"/>
-  <text x="980" y="121" text-anchor="middle" font-family="Space Grotesk" font-size="11" font-weight="700" fill="#e2e8f0">VSM</text>
-  <text x="980" y="137" text-anchor="middle" font-family="Space Grotesk" font-size="9" fill="#8B5CF6">Required?</text>
-</g>
+    <!-- Filters -->
+    <filter id="fb" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="fv" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="fg" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="fr" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
 
-<!-- VSM YES → Workshop -->
-<path d="M980,165 V548" stroke="#10B981" stroke-width="1.7" fill="none" marker-end="url(#ag)" opacity=".85"/>
-<text x="1000" y="185" font-family="Space Grotesk" font-size="9" font-weight="700" fill="#10B981">YES</text>
+    <!-- Gradients -->
+    <linearGradient id="cylg" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#021a30"/>
+      <stop offset="45%" stop-color="#0a2d4a"/>
+      <stop offset="100%" stop-color="#021a30"/>
+    </linearGradient>
+    <radialGradient id="globeg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#1a0a3d"/>
+      <stop offset="100%" stop-color="#0a0618"/>
+    </radialGradient>
+    <linearGradient id="arrowg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00D4FF" stop-opacity="0.7"/>
+      <stop offset="50%" stop-color="#8B5CF6" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#10B981" stop-opacity="0.7"/>
+    </linearGradient>
+  </defs>
 
-<!-- VSM NO → Feasibility -->
-<line x1="1040" y1="125" x2="1098" y2="125" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
-<text x="1070" y="115" font-family="Space Grotesk" font-size="9" font-weight="700" fill="#10B981">NO</text>
+  <!-- ================================================================ -->
+  <!-- COLUMN GUIDES: main spine x=530, left branch x=200, right x=780 -->
+  <!-- ================================================================ -->
 
-<!-- 6. Feasibility -->
-<g filter="url(#fb)">
-  <rect x="1100" y="90" width="200" height="70" rx="12" fill="#061824" stroke="#00D4FF" stroke-width="1.8"/>
-  <text x="1200" y="118" text-anchor="middle" font-family="Space Grotesk" font-size="13" font-weight="700" fill="#00D4FF">📋 Feasibility Study</text>
-  <text x="1200" y="136" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748b">ROI · Risk · Effort</text>
-</g>
+  <!-- ─── 1. IDEA INTAKE — TURBO DRIVE CYLINDER (top, cx=530, y=30) ─── -->
+  <g filter="url(#fb)" style="animation:gPulse 3s ease-in-out infinite;">
+    <!-- Cylinder top ellipse -->
+    <ellipse cx="530" cy="58" rx="72" ry="22" fill="#0a2d4a" stroke="#00D4FF" stroke-width="1.8"/>
+    <!-- Cylinder body -->
+    <rect x="458" y="58" width="144" height="180" fill="url(#cylg)"/>
+    <!-- Cylinder bottom ellipse -->
+    <ellipse cx="530" cy="238" rx="72" ry="22" fill="#071824" stroke="rgba(0,212,255,.5)" stroke-width="1.5"/>
+    <!-- Side lines -->
+    <line x1="458" y1="58" x2="458" y2="238" stroke="#00D4FF" stroke-width="1.8"/>
+    <line x1="602" y1="58" x2="602" y2="238" stroke="#00D4FF" stroke-width="1.8"/>
+    <!-- Shine -->
+    <line x1="472" y1="70" x2="472" y2="226" stroke="rgba(0,212,255,.18)" stroke-width="3"/>
+    <!-- Labels -->
+    <text x="530" y="140" text-anchor="middle" font-family="Space Grotesk"
+          font-size="17" font-weight="800" fill="#00D4FF">Turbo Drive</text>
+    <text x="530" y="162" text-anchor="middle" font-family="Inter"
+          font-size="10" fill="rgba(0,212,255,.6)">IDEA INTAKE</text>
+  </g>
+  <circle cx="472" cy="70" r="12" fill="#071824" stroke="#00D4FF" stroke-width="1.4"/>
+  <text x="472" y="74" text-anchor="middle" font-family="Space Grotesk" font-size="10" font-weight="800" fill="#00D4FF">01</text>
+  <text x="618" y="144" font-family="Inter" font-size="9" fill="rgba(255,255,255,.4)">Owner:</text>
+  <text x="618" y="157" font-family="Space Grotesk" font-size="9.5" font-weight="700" fill="#00D4FF">User</text>
 
-<!-- 7. Prioritization -->
-<g>
-  <rect x="1320" y="90" width="200" height="70" rx="12" fill="#0f0a1e" stroke="#8B5CF6" stroke-width="1.8"/>
-  <text x="1420" y="118" text-anchor="middle" font-family="Space Grotesk" font-size="13" font-weight="700" fill="#a78bfa">📌 Prioritization Matrix</text>
-  <text x="1420" y="136" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#94a3b8">HIGH · MEDIUM · LOW</text>
-</g>
+  <!-- Arrow: Cylinder → Initial Screening -->
+  <line x1="530" y1="260" x2="530" y2="302" stroke="#00D4FF" stroke-width="2"
+        marker-end="url(#ab)"/>
+  <circle r="5" fill="#00D4FF" opacity=".9">
+    <animateMotion dur="1.6s" repeatCount="indefinite"
+      path="M530,260 V302"/>
+    <animate attributeName="opacity" values="0;1;1;0" dur="1.6s" repeatCount="indefinite"/>
+  </circle>
 
-<!-- Arrow Feasibility → Prioritization -->
-<line x1="1300" y1="125" x2="1318" y2="125" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
+  <!-- ─── 2. INITIAL SCREENING — RECTANGLE (y=302) ─── -->
+  <g filter="url(#fv)">
+    <rect x="390" y="302" width="280" height="68" rx="13"
+          fill="#110e28" stroke="#8B5CF6" stroke-width="1.8"/>
+    <text x="530" y="330" text-anchor="middle" font-family="Space Grotesk"
+          font-size="14" font-weight="700" fill="#c4b5fd">🔍 Initial Screening</text>
+    <text x="530" y="349" text-anchor="middle" font-family="Inter"
+          font-size="10" fill="#64748b">PL / SPL Review · Relevance check</text>
+    <text x="530" y="362" text-anchor="middle" font-family="Inter"
+          font-size="10" fill="#64748b">Category · Feasibility signal</text>
+  </g>
+  <circle cx="404" cy="316" r="12" fill="#110e28" stroke="#8B5CF6" stroke-width="1.4"/>
+  <text x="404" y="320" text-anchor="middle" font-family="Space Grotesk" font-size="10" font-weight="800" fill="#c4b5fd">02</text>
+  <text x="682" y="332" font-family="Inter" font-size="9" fill="rgba(255,255,255,.4)">Owner:</text>
+  <text x="682" y="345" font-family="Space Grotesk" font-size="9.5" font-weight="700" fill="#c4b5fd">PL/SPL</text>
 
-<!-- 8. Management Approval diamond -->
-<g filter="url(#fv)" style="animation:vPulse 3.5s ease-in-out infinite 1.5s;">
-  <polygon points="1640,85 1700,125 1640,165 1580,125" fill="#0e0b20" stroke="#8B5CF6" stroke-width="2"/>
-  <text x="1640" y="118" text-anchor="middle" font-family="Space Grotesk" font-size="10" font-weight="700" fill="#e2e8f0">Mgmt</text>
-  <text x="1640" y="134" text-anchor="middle" font-family="Space Grotesk" font-size="9" fill="#8B5CF6">Approval</text>
-</g>
+  <!-- Arrow: Screening → Decision diamond -->
+  <line x1="530" y1="370" x2="530" y2="412" stroke="#8B5CF6" stroke-width="2"
+        marker-end="url(#av)"/>
+  <circle r="5" fill="#8B5CF6">
+    <animateMotion dur="1.4s" repeatCount="indefinite" begin=".3s"
+      path="M530,370 V412"/>
+    <animate attributeName="opacity" values="0;1;1;0" dur="1.4s" repeatCount="indefinite" begin=".3s"/>
+  </circle>
 
-<!-- Arrow Prioritization → Mgmt -->
-<line x1="1520" y1="125" x2="1578" y2="125" stroke="#8B5CF6" stroke-width="2" marker-end="url(#av)"/>
+  <!-- ─── DECISION 1: PL/SPL Approve? (diamond, cx=530, cy=462) ─── -->
+  <g filter="url(#fv)" style="animation:vPulse 3.5s ease-in-out infinite 0.5s;">
+    <polygon points="530,412 620,462 530,512 440,462"
+             fill="#0e0b20" stroke="#8B5CF6" stroke-width="2"/>
+    <text x="530" y="457" text-anchor="middle" font-family="Space Grotesk"
+          font-size="11" font-weight="700" fill="#e2e8f0">Approved?</text>
+    <text x="530" y="472" text-anchor="middle" font-family="Space Grotesk"
+          font-size="10" fill="#8B5CF6">PL/SPL Gate</text>
+    <!-- YES label -->
+    <text x="544" y="504" font-family="Space Grotesk" font-size="10"
+          font-weight="700" fill="#10B981">YES</text>
+    <!-- NO label -->
+    <text x="344" y="466" font-family="Space Grotesk" font-size="10"
+          font-weight="700" fill="#ef4444">NO</text>
+  </g>
 
-<!-- Mgmt NO → Reject/Park 2 -->
-<path d="M1580,165 V300 H1640 V548" stroke="#ef4444" stroke-width="1.6" fill="none" stroke-dasharray="5 3" marker-end="url(#ar)" opacity=".8"/>
-<text x="1560" y="205" font-family="Space Grotesk" font-size="9.5" font-weight="700" fill="#ef4444">NO</text>
+  <!-- NO branch → Reject/Park (left) -->
+  <path d="M440,462 H240 V538" stroke="#ef4444" stroke-width="1.6" fill="none"
+        stroke-dasharray="5 3" marker-end="url(#ar)" opacity=".75"/>
+  <text x="310" y="454" font-family="Space Grotesk" font-size="9.5"
+        fill="#ef4444" font-weight="700">NO</text>
 
-<!-- Mgmt YES → Requirement Gathering (row 2) -->
-<path d="M1640,165 V280 H300 V318" stroke="#00D4FF" stroke-width="2" fill="none" marker-end="url(#ab)"/>
-<text x="1660" y="200" font-family="Space Grotesk" font-size="9.5" font-weight="700" fill="#10B981">YES</text>
-<circle r="5" fill="#00D4FF"><animateMotion dur="2.4s" repeatCount="indefinite" path="M1640,165 V280 H300 V318"/><animate attributeName="opacity" values="0;1;1;0" dur="2.4s" repeatCount="indefinite"/></circle>
+  <!-- REJECT/PARK 1 (x=160, y=512) -->
+  <g filter="url(#fr)">
+    <rect x="160" y="512" width="160" height="52" rx="10"
+          fill="#200a0a" stroke="#ef4444" stroke-width="1.6"/>
+    <text x="240" y="534" text-anchor="middle" font-family="Space Grotesk"
+          font-size="12" font-weight="700" fill="#ef4444">✕ Reject / Park</text>
+    <text x="240" y="551" text-anchor="middle" font-family="Inter"
+          font-size="9" fill="#64748b">Idea closed or deferred</text>
+  </g>
 
-<!-- ═══════ ROW 2 — EXECUTION & DELIVERY ═══════ -->
-<!-- 9. Requirement Gathering -->
-<g filter="url(#fb)">
-  <rect x="200" y="320" width="200" height="80" rx="12" fill="#061824" stroke="#00D4FF" stroke-width="1.8"/>
-  <text x="300" y="350" text-anchor="middle" font-family="Space Grotesk" font-size="12" font-weight="700" fill="#00D4FF">📝 Requirement</text>
-  <text x="300" y="366" text-anchor="middle" font-family="Space Grotesk" font-size="12" font-weight="700" fill="#00D4FF">Gathering</text>
-  <text x="300" y="384" text-anchor="middle" font-family="Inter" font-size="8.5" fill="#64748b">User stories · Scope</text>
-</g>
+  <!-- YES → Business Impact Assessment -->
+  <line x1="530" y1="512" x2="530" y2="558" stroke="#00D4FF" stroke-width="2"
+        marker-end="url(#ab)"/>
+  <circle r="5" fill="#00D4FF">
+    <animateMotion dur="1.3s" repeatCount="indefinite" begin=".6s"
+      path="M530,512 V558"/>
+    <animate attributeName="opacity" values="0;1;1;0" dur="1.3s" repeatCount="indefinite" begin=".6s"/>
+  </circle>
 
-<!-- 10. Sprint Cycle -->
-<g filter="url(#fv)">
-  <rect x="500" y="320" width="520" height="80" rx="14" fill="rgba(139,92,246,.06)" stroke="#8B5CF6" stroke-width="1.8"/>
-  <text x="760" y="352" text-anchor="middle" font-family="Space Grotesk" font-size="13" font-weight="800" fill="#a78bfa">2-WEEK SPRINT CYCLE</text>
-  <text x="760" y="372" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748b">Develop ↔ Plan &amp; design · SIT · Initiation → UAT</text>
-  <path d="M700,352 a30,30 0 1,1 -0.1,0" fill="none" stroke="#00D4FF" stroke-width="2" opacity=".8"/>
-  <path d="M820,352 a30,30 0 1,0 0.1,0" fill="none" stroke="#10B981" stroke-width="2" opacity=".8"/>
-  <text x="700" y="340" text-anchor="middle" font-family="Space Grotesk" font-size="8" fill="#00D4FF">Plan</text>
-  <text x="820" y="340" text-anchor="middle" font-family="Space Grotesk" font-size="8" fill="#10B981">Dev</text>
-</g>
+  <!-- ─── 3. BUSINESS IMPACT ASSESSMENT (y=558) ─── -->
+  <g filter="url(#fb)">
+    <rect x="385" y="558" width="290" height="64" rx="13"
+          fill="#061824" stroke="#00D4FF" stroke-width="1.8"/>
+    <text x="530" y="582" text-anchor="middle" font-family="Space Grotesk"
+          font-size="13" font-weight="700" fill="#00D4FF">📊 Business Impact Assessment</text>
+    <text x="530" y="599" text-anchor="middle" font-family="Inter"
+          font-size="9.5" fill="#64748b">Value · Complexity · Priority · Alignment</text>
+    <text x="530" y="613" text-anchor="middle" font-family="Inter"
+          font-size="9.5" fill="#64748b">Sponsor identification · Success criteria</text>
+  </g>
+  <circle cx="399" cy="572" r="12" fill="#061824" stroke="#00D4FF" stroke-width="1.4"/>
+  <text x="399" y="576" text-anchor="middle" font-family="Space Grotesk" font-size="10" font-weight="800" fill="#00D4FF">03</text>
+  <text x="686" y="588" font-family="Inter" font-size="9" fill="rgba(255,255,255,.4)">Owner:</text>
+  <text x="686" y="601" font-family="Space Grotesk" font-size="9.5" font-weight="700" fill="#00D4FF">PL/SPL</text>
 
-<!-- 11. Go Live -->
-<g filter="url(#fg)" style="animation:gYPulse 3s ease-in-out infinite;">
-  <rect x="1050" y="320" width="200" height="80" rx="12" fill="#061e14" stroke="#10B981" stroke-width="2"/>
-  <text x="1150" y="352" text-anchor="middle" font-family="Space Grotesk" font-size="13" font-weight="800" fill="#10B981">🚀 Go Live</text>
-  <text x="1150" y="372" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748b">Deploy to production</text>
-</g>
+  <!-- Arrow → VSM Required? -->
+  <line x1="530" y1="622" x2="530" y2="664" stroke="#8B5CF6" stroke-width="2"
+        marker-end="url(#av)"/>
+  <circle r="5" fill="#8B5CF6">
+    <animateMotion dur="1.2s" repeatCount="indefinite" begin=".9s"
+      path="M530,622 V664"/>
+    <animate attributeName="opacity" values="0;1;1;0" dur="1.2s" repeatCount="indefinite" begin=".9s"/>
+  </circle>
 
-<!-- 12. Hypercare -->
-<g filter="url(#fb)">
-  <rect x="1300" y="320" width="200" height="80" rx="12" fill="#051825" stroke="#00D4FF" stroke-width="1.8"/>
-  <text x="1400" y="352" text-anchor="middle" font-family="Space Grotesk" font-size="13" font-weight="700" fill="#00D4FF">🛡️ Hypercare</text>
-  <text x="1400" y="372" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748b">Monitor · Hotfixes</text>
-</g>
+  <!-- ─── DECISION 2: VSM Required? (cx=530, cy=714) ─── -->
+  <g filter="url(#fv)" style="animation:vPulse 3.5s ease-in-out infinite 1s;">
+    <polygon points="530,664 618,714 530,764 442,714"
+             fill="#0e0b20" stroke="#8B5CF6" stroke-width="2"/>
+    <text x="530" y="709" text-anchor="middle" font-family="Space Grotesk"
+          font-size="11" font-weight="700" fill="#e2e8f0">VSM</text>
+    <text x="530" y="724" text-anchor="middle" font-family="Space Grotesk"
+          font-size="10" fill="#8B5CF6">Required?</text>
+    <!-- Labels -->
+    <text x="462" y="706" font-family="Space Grotesk" font-size="9.5"
+          font-weight="700" fill="#10B981">NO</text>
+    <text x="624" y="706" font-family="Space Grotesk" font-size="9.5"
+          font-weight="700" fill="#10B981">YES</text>
+  </g>
+  <circle cx="452" cy="678" r="12" fill="#0e0b20" stroke="#8B5CF6" stroke-width="1.4"/>
+  <text x="452" y="682" text-anchor="middle" font-family="Space Grotesk" font-size="10" font-weight="800" fill="#c4b5fd">04</text>
 
-<!-- 13. Benefits Tracking -->
-<g filter="url(#fb)">
-  <rect x="1550" y="320" width="200" height="80" rx="12" fill="#051825" stroke="#00D4FF" stroke-width="1.8"/>
-  <text x="1650" y="352" text-anchor="middle" font-family="Space Grotesk" font-size="12" font-weight="700" fill="#00D4FF">📈 Benefits Track</text>
-  <text x="1650" y="372" text-anchor="middle" font-family="Inter" font-size="9" fill="#64748b">KPI · Hrs saved · ROI</text>
-</g>
+  <!-- YES → VSM Workshop (right branch) -->
+  <path d="M618,714 H760 V788" stroke="#10B981" stroke-width="1.7" fill="none"
+        marker-end="url(#ag)" opacity=".85"/>
+  <circle r="5" fill="#10B981">
+    <animateMotion dur="1.8s" repeatCount="indefinite" begin=".2s"
+      path="M618,714 H760 V788"/>
+    <animate attributeName="opacity" values="0;1;1;0" dur="1.8s" repeatCount="indefinite" begin=".2s"/>
+  </circle>
 
-<!-- Row 2 arrows -->
-<line x1="400" y1="360" x2="498" y2="360" stroke="#8B5CF6" stroke-width="2" marker-end="url(#av)"/>
-<line x1="1020" y1="360" x2="1048" y2="360" stroke="#10B981" stroke-width="2" marker-end="url(#ag)"/>
-<line x1="1250" y1="360" x2="1298" y2="360" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
-<line x1="1500" y1="360" x2="1548" y2="360" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
+  <!-- ─── VSM WORKSHOP (right, x=670, y=788) ─── -->
+  <g filter="url(#fg)">
+    <rect x="670" y="788" width="190" height="80" rx="12"
+          fill="#061e14" stroke="#10B981" stroke-width="1.8"/>
+    <text x="765" y="814" text-anchor="middle" font-family="Space Grotesk"
+          font-size="12" font-weight="700" fill="#10B981">🧠 VSM Workshop</text>
+    <text x="765" y="832" text-anchor="middle" font-family="Inter"
+          font-size="9" fill="#64748b">Brainstorming · Value stream map</text>
+    <text x="765" y="847" text-anchor="middle" font-family="Inter"
+          font-size="9" fill="#64748b">Waste identification · Future state</text>
+    <text x="765" y="860" text-anchor="middle" font-family="Inter"
+          font-size="9" fill="#64748b">Stakeholder alignment</text>
+  </g>
+  <circle cx="682" cy="800" r="12" fill="#061e14" stroke="#10B981" stroke-width="1.4"/>
+  <text x="682" y="804" text-anchor="middle" font-family="Space Grotesk" font-size="10" font-weight="800" fill="#10B981">05</text>
+  <text x="765" y="878" text-anchor="middle" font-family="Inter" font-size="8.5" fill="rgba(255,255,255,.4)">Owner: Stakeholders + Engineer</text>
 
-<!-- ═══════ ROW 3 — BRANCHES ═══════ -->
-<!-- Reject/Park 1 -->
-<g filter="url(#fv)">
-  <rect x="310" y="550" width="160" height="60" rx="10" fill="#200a0a" stroke="#ef4444" stroke-width="1.6"/>
-  <text x="390" y="582" text-anchor="middle" font-family="Space Grotesk" font-size="12" font-weight="700" fill="#ef4444">✕ Reject / Park</text>
-</g>
+  <!-- VSM → Feasibility (merge back to spine) -->
+  <path d="M765,868 V906 H530 V930" stroke="#10B981" stroke-width="1.5" fill="none"
+        stroke-dasharray="5 3" marker-end="url(#ab)" opacity=".6"/>
 
-<!-- VSM Workshop -->
-<g filter="url(#fg)">
-  <rect x="880" y="550" width="200" height="60" rx="10" fill="#061e14" stroke="#10B981" stroke-width="1.8"/>
-  <text x="980" y="582" text-anchor="middle" font-family="Space Grotesk" font-size="12" font-weight="700" fill="#10B981">🧠 VSM Workshop</text>
-</g>
-<!-- Workshop → Feasibility (dashed rejoin) -->
-<path d="M1080,580 H1240 V162" stroke="#10B981" stroke-width="1.5" fill="none" stroke-dasharray="5 3" marker-end="url(#ab)" opacity=".7"/>
+  <!-- NO → direct to Feasibility -->
+  <line x1="530" y1="764" x2="530" y2="930" stroke="#00D4FF" stroke-width="2"
+        marker-end="url(#ab)"/>
+  <circle r="5" fill="#00D4FF">
+    <animateMotion dur="2s" repeatCount="indefinite" begin="1.1s"
+      path="M530,764 V930"/>
+    <animate attributeName="opacity" values="0;1;1;0" dur="2s" repeatCount="indefinite" begin="1.1s"/>
+  </circle>
 
-<!-- Reject/Park 2 -->
-<g filter="url(#fv)">
-  <rect x="1560" y="550" width="160" height="60" rx="10" fill="#200a0a" stroke="#ef4444" stroke-width="1.6"/>
-  <text x="1640" y="582" text-anchor="middle" font-family="Space Grotesk" font-size="12" font-weight="700" fill="#ef4444">✕ Reject / Park</text>
-</g>
+  <!-- ─── 4. FEASIBILITY STUDY (y=930) ─── -->
+  <g filter="url(#fb)">
+    <rect x="380" y="930" width="300" height="68" rx="13"
+          fill="#061824" stroke="#00D4FF" stroke-width="1.8"/>
+    <text x="530" y="956" text-anchor="middle" font-family="Space Grotesk"
+          font-size="13" font-weight="700" fill="#00D4FF">📋 Feasibility Study</text>
+    <text x="530" y="973" text-anchor="middle" font-family="Inter"
+          font-size="9.5" fill="#64748b">ROI · Risk · Effort estimation</text>
+    <text x="530" y="988" text-anchor="middle" font-family="Inter"
+          font-size="9.5" fill="#64748b">Automation category · Tech approach</text>
+  </g>
+  <circle cx="394" cy="944" r="12" fill="#061824" stroke="#00D4FF" stroke-width="1.4"/>
+  <text x="394" y="948" text-anchor="middle" font-family="Space Grotesk" font-size="10" font-weight="800" fill="#00D4FF">06</text>
+  <text x="700" y="960" font-family="Inter" font-size="9" fill="rgba(255,255,255,.4)">Owner:</text>
+  <text x="700" y="973" font-family="Space Grotesk" font-size="9.5" font-weight="700" fill="#00D4FF">Automation Engineer</text>
 
-<!-- ═══════ LOOP BACK — Continuous Improvement ═══════ -->
-<path d="M1650,400 V40 H100 V93" stroke="url(#loopg)" stroke-width="2.2" fill="none" stroke-dasharray="8 5" marker-end="url(#ag)" opacity=".7"/>
-<text x="875" y="28" text-anchor="middle" font-family="Space Grotesk" font-size="11" font-weight="700" letter-spacing="2" fill="rgba(139,92,246,.8)">🔄 CONTINUOUS IMPROVEMENT LOOP</text>
-<circle r="5.5" fill="#8B5CF6" opacity=".75"><animateMotion dur="6s" repeatCount="indefinite" path="M1650,400 V40 H100 V93"/><animate attributeName="opacity" values="0;.75;.75;0" dur="6s" repeatCount="indefinite"/></circle>
+  <!-- Arrow → Prioritization Matrix -->
+  <line x1="530" y1="998" x2="530" y2="1036" stroke="#00D4FF" stroke-width="2"
+        marker-end="url(#ab)"/>
+  <circle r="5" fill="#00D4FF">
+    <animateMotion dur="1.3s" repeatCount="indefinite" begin="1.4s"
+      path="M530,998 V1036"/>
+    <animate attributeName="opacity" values="0;1;1;0" dur="1.3s" repeatCount="indefinite" begin="1.4s"/>
+  </circle>
 
-</svg>
+  <!-- ─── 5. PRIORITIZATION MATRIX (y=1036) ─── -->
+  <g>
+    <rect x="370" y="1036" width="320" height="64" rx="13"
+          fill="#0f0a1e" stroke="#8B5CF6" stroke-width="1.8"/>
+    <text x="530" y="1060" text-anchor="middle" font-family="Space Grotesk"
+          font-size="13" font-weight="700" fill="#a78bfa">📌 Prioritization Matrix</text>
+    <!-- Three priority chips -->
+    <rect x="393" y="1073" width="72" height="18" rx="9"
+          fill="rgba(239,68,68,.15)" stroke="rgba(239,68,68,.4)" stroke-width="1"/>
+    <text x="429" y="1086" text-anchor="middle" font-family="Space Grotesk"
+          font-size="9" font-weight="700" fill="#ef4444">HIGH</text>
+    <rect x="481" y="1073" width="72" height="18" rx="9"
+          fill="rgba(251,146,60,.12)" stroke="rgba(251,146,60,.4)" stroke-width="1"/>
+    <text x="517" y="1086" text-anchor="middle" font-family="Space Grotesk"
+          font-size="9" font-weight="700" fill="#fb923c">MEDIUM</text>
+    <rect x="569" y="1073" width="72" height="18" rx="9"
+          fill="rgba(100,116,139,.15)" stroke="rgba(100,116,139,.4)" stroke-width="1"/>
+    <text x="605" y="1086" text-anchor="middle" font-family="Space Grotesk"
+          font-size="9" font-weight="700" fill="#94a3b8">LOW</text>
+  </g>
+  <circle cx="384" cy="1050" r="12" fill="#0f0a1e" stroke="#8B5CF6" stroke-width="1.4"/>
+  <text x="384" y="1054" text-anchor="middle" font-family="Space Grotesk" font-size="10" font-weight="800" fill="#a78bfa">07</text>
+  <text x="690" y="1058" font-family="Inter" font-size="9" fill="rgba(255,255,255,.4)">Owner:</text>
+  <text x="690" y="1071" font-family="Space Grotesk" font-size="9.5" font-weight="700" fill="#a78bfa">PL/SPL</text>
+
+  <!-- Arrow → Management Approval -->
+  <line x1="530" y1="1100" x2="530" y2="1136" stroke="#8B5CF6" stroke-width="2"
+        marker-end="url(#av)"/>
+  <circle r="5" fill="#8B5CF6">
+    <animateMotion dur="1.2s" repeatCount="indefinite" begin="1.7s"
+      path="M530,1100 V1136"/>
+    <animate attributeName="opacity" values="0;1;1;0" dur="1.2s" repeatCount="indefinite" begin="1.7s"/>
+  </circle>
+
+  <!-- ─── DECISION 3: Management Approval / PL-SPL Sign-off (cx=530, cy=1186) ─── -->
+  <g filter="url(#fv)" style="animation:vPulse 3.5s ease-in-out infinite 1.5s;">
+    <polygon points="530,1136 628,1186 530,1236 432,1186"
+             fill="#0e0b20" stroke="#8B5CF6" stroke-width="2"/>
+    <text x="530" y="1180" text-anchor="middle" font-family="Space Grotesk"
+          font-size="11" font-weight="700" fill="#e2e8f0">Management</text>
+    <text x="530" y="1196" text-anchor="middle" font-family="Space Grotesk"
+          font-size="10" fill="#8B5CF6">Approval</text>
+    <text x="544" y="1228" font-family="Space Grotesk" font-size="9.5"
+          font-weight="700" fill="#10B981">YES</text>
+    <text x="344" y="1190" font-family="Space Grotesk" font-size="9.5"
+          font-weight="700" fill="#ef4444">NO</text>
+  </g>
+  <circle cx="452" cy="1150" r="12" fill="#0e0b20" stroke="#8B5CF6" stroke-width="1.4"/>
+  <text x="452" y="1154" text-anchor="middle" font-family="Space Grotesk" font-size="10" font-weight="800" fill="#c4b5fd">08</text>
+  <text x="640" y="1150" text-anchor="middle" font-family="Inter" font-size="8.5" fill="rgba(255,255,255,.4)">Owner: Management</text>
+  <text x="640" y="1162" text-anchor="middle" font-family="Inter" font-size="8.5" fill="rgba(255,255,255,.4)">&amp; PL/SPL</text>
+
+  <!-- NO → Reject/Park 2 (left) -->
+  <path d="M432,1186 H240 V1261" stroke="#ef4444" stroke-width="1.6" fill="none"
+        stroke-dasharray="5 3" marker-end="url(#ar)" opacity=".75"/>
+  <g filter="url(#fr)">
+    <rect x="160" y="1236" width="160" height="50" rx="10"
+          fill="#200a0a" stroke="#ef4444" stroke-width="1.6"/>
+    <text x="240" y="1258" text-anchor="middle" font-family="Space Grotesk"
+          font-size="12" font-weight="700" fill="#ef4444">✕ Reject / Park</text>
+    <text x="240" y="1275" text-anchor="middle" font-family="Inter"
+          font-size="9" fill="#64748b">Idea not approved</text>
+  </g>
+  <text x="318" y="1178" font-family="Space Grotesk" font-size="9.5"
+        fill="#ef4444" font-weight="700">NO</text>
+
+  <!-- YES → Requirement Gathering -->
+  <line x1="530" y1="1236" x2="530" y2="1272" stroke="#00D4FF" stroke-width="2"
+        marker-end="url(#ab)"/>
+  <circle r="5" fill="#00D4FF">
+    <animateMotion dur="1.2s" repeatCount="indefinite" begin="2s"
+      path="M530,1236 V1272"/>
+    <animate attributeName="opacity" values="0;1;1;0" dur="1.2s" repeatCount="indefinite" begin="2s"/>
+  </circle>
+
+  <!-- ─── 6. REQUIREMENT GATHERING (y=1272) ─── -->
+  <g filter="url(#fb)">
+    <rect x="378" y="1272" width="304" height="64" rx="13"
+          fill="#061824" stroke="#00D4FF" stroke-width="1.8"/>
+    <text x="530" y="1296" text-anchor="middle" font-family="Space Grotesk"
+          font-size="13" font-weight="700" fill="#00D4FF">📝 Requirement Gathering</text>
+    <text x="530" y="1313" text-anchor="middle" font-family="Inter"
+          font-size="9.5" fill="#64748b">User stories · Acceptance criteria</text>
+    <text x="530" y="1327" text-anchor="middle" font-family="Inter"
+          font-size="9.5" fill="#64748b">Scope · Integration points · Dependencies</text>
+  </g>
+  <circle cx="392" cy="1288" r="12" fill="#061824" stroke="#00D4FF" stroke-width="1.4"/>
+  <text x="392" y="1292" text-anchor="middle" font-family="Space Grotesk" font-size="10" font-weight="800" fill="#00D4FF">09</text>
+  <text x="696" y="1304" font-family="Inter" font-size="8.5" fill="rgba(255,255,255,.4)">Owner: Engineer +</text>
+  <text x="696" y="1316" font-family="Inter" font-size="8.5" fill="rgba(255,255,255,.4)">Business User</text>
+
+  <!-- ================================================================ -->
+  <!-- ================================================================ -->
+  <!-- AGILE SPRINT BLOCK — circular loop style (Image 2 reference)   -->
+  <!-- Horizontal arrow bar: Initiation → UAT                          -->
+  <!-- Circular arrows above: Develop and test ↔ Plan and design       -->
+  <!-- ================================================================ -->
+
+  <!-- Arrow: Req Gathering → Sprint block -->
+  <line x1="530" y1="1336" x2="530" y2="1370" stroke="#8B5CF6" stroke-width="2"
+        marker-end="url(#av)"/>
+  <circle r="4.5" fill="#8B5CF6">
+    <animateMotion dur="1.1s" repeatCount="indefinite" path="M530,1336 V1370"/>
+    <animate attributeName="opacity" values="0;1;1;0" dur="1.1s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- Sprint outer container -->
+  <rect x="220" y="1370" width="620" height="450" rx="18"
+        fill="rgba(139,92,246,.035)" stroke="rgba(139,92,246,.18)" stroke-width="1.5"/>
+  <text x="530" y="1394" text-anchor="middle" font-family="Space Grotesk"
+        font-size="9" font-weight="700" fill="rgba(139,92,246,.5)"
+        letter-spacing="3">2-WEEK SPRINT CYCLE</text>
+
+  <!-- ── CIRCULAR LOOP (centre cx=530, cy=1570, r=130) ─────────────── -->
+  <!-- Outer glow ring -->
+  <circle cx="530" cy="1570" r="132"
+          fill="none" stroke="rgba(139,92,246,.1)" stroke-width="20"/>
+
+  <!-- Clockwise arc: top-right quadrant — "Plan and design" side (blue) -->
+  <path d="M 530 1438 A 132 132 0 0 1 662 1570"
+        fill="none" stroke="#00D4FF" stroke-width="14"
+        stroke-linecap="round" opacity=".85">
+    <animate attributeName="stroke-opacity" values=".6;1;.6" dur="2.4s" repeatCount="indefinite"/>
+  </path>
+  <!-- Clockwise arc: bottom-right → bottom-left quadrant — "Develop and test" side (violet) -->
+  <path d="M 662 1570 A 132 132 0 1 1 530 1438"
+        fill="none" stroke="#8B5CF6" stroke-width="14"
+        stroke-linecap="round" opacity=".85">
+    <animate attributeName="stroke-opacity" values=".6;1;.6" dur="2.4s" repeatCount="indefinite" begin="1.2s"/>
+  </path>
+
+  <!-- Arrow heads on the circle (clockwise direction) -->
+  <!-- Top arrowhead (Plan side → going clockwise, pointing right-down) -->
+  <polygon points="530,1437 519,1456 541,1456"
+           fill="#00D4FF" transform="rotate(30,530,1445)"/>
+  <!-- Bottom arrowhead (Develop side → going clockwise, pointing left-up) -->
+  <polygon points="530,1703 519,1684 541,1684"
+           fill="#8B5CF6" transform="rotate(30,530,1695)"/>
+
+  <!-- Animated dot travelling clockwise around ring -->
+  <circle r="7" fill="#00D4FF" filter="url(#fb)" opacity=".9">
+    <animateMotion dur="5s" repeatCount="indefinite"
+      path="M530,1438 A132,132 0 1,1 529.9,1438"/>
+  </circle>
+  <circle r="5" fill="#8B5CF6" filter="url(#fv)" opacity=".8">
+    <animateMotion dur="5s" repeatCount="indefinite" begin="-2.5s"
+      path="M530,1438 A132,132 0 1,1 529.9,1438"/>
+  </circle>
+
+  <!-- Centre circle (white inner, like Image 2) -->
+  <circle cx="530" cy="1570" r="68" fill="#0a0f1e" stroke="rgba(255,255,255,.06)" stroke-width="1.5"/>
+
+  <!-- ── LABELS around the circle ──────────────────────────────────── -->
+  <!-- "Development" — LEFT side -->
+  <circle cx="230" cy="1524" r="12" fill="#0a0f1e" stroke="#8B5CF6" stroke-width="1.4"/>
+  <text x="230" y="1528" text-anchor="middle" font-family="Space Grotesk" font-size="10" font-weight="800" fill="#a78bfa">11</text>
+  <text x="328" y="1558" text-anchor="middle" font-family="Space Grotesk"
+        font-size="13" font-weight="700" fill="#a78bfa">Development</text>
+  <text x="328" y="1576" text-anchor="middle" font-family="Inter"
+        font-size="8.5" fill="rgba(255,255,255,.4)">Owner: Automation Engineer</text>
+
+  <!-- "Plan &amp; Design" — RIGHT side -->
+  <circle cx="830" cy="1524" r="12" fill="#0a0f1e" stroke="#00D4FF" stroke-width="1.4"/>
+  <text x="830" y="1528" text-anchor="middle" font-family="Space Grotesk" font-size="10" font-weight="800" fill="#00D4FF">10</text>
+  <text x="732" y="1558" text-anchor="middle" font-family="Space Grotesk"
+        font-size="13" font-weight="700" fill="#00D4FF">Plan &amp; Design</text>
+  <text x="732" y="1576" text-anchor="middle" font-family="Inter"
+        font-size="8.5" fill="rgba(255,255,255,.4)">Owner: Automation Engineer</text>
+
+  <!-- Centre label: Sprint phases stacked -->
+  <text x="530" y="1556" text-anchor="middle" font-family="Space Grotesk"
+        font-size="10" font-weight="700" fill="#e2e8f0">Sprint</text>
+  <text x="530" y="1572" text-anchor="middle" font-family="Space Grotesk"
+        font-size="10" font-weight="700" fill="#e2e8f0">Cycle</text>
+  <text x="530" y="1592" text-anchor="middle" font-family="Inter"
+        font-size="8.5" fill="#475569">· SIT ↔ UAT ·</text>
+
+  <!-- ── HORIZONTAL ARROW BAR: Initiation → UAT (like Image 2) ────── -->
+  <!-- Background arrow shape -->
+  <defs>
+    <linearGradient id="bargrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="rgba(0,212,255,.35)"/>
+      <stop offset="55%" stop-color="rgba(0,212,255,.25)"/>
+      <stop offset="100%" stop-color="rgba(16,185,129,.45)"/>
+    </linearGradient>
+  </defs>
+  <!-- Arrow bar body -->
+  <path d="M 270 1730 H 760 L 790 1762 L 760 1794 H 270 Z"
+        fill="url(#bargrad)" stroke="rgba(0,212,255,.3)" stroke-width="1.2"/>
+  <!-- Arrow shimmer -->
+  <path d="M 270 1730 H 760 L 790 1762 L 760 1794 H 270 Z"
+        fill="url(#bargrad)" opacity=".4">
+    <animate attributeName="opacity" values=".2;.5;.2" dur="2.5s" repeatCount="indefinite"/>
+  </path>
+
+  <!-- Divider line between Initiation and UAT (at 55% width) -->
+  <line x1="554" y1="1732" x2="554" y2="1792" stroke="rgba(255,255,255,.18)" stroke-width="1.2"/>
+
+  <!-- SIT label (left section) -->
+  <text x="412" y="1750" text-anchor="middle" font-family="Space Grotesk"
+        font-size="13" font-weight="700" fill="#e2e8f0">SIT</text>
+  <text x="412" y="1786" text-anchor="middle" font-family="Inter"
+        font-size="8" fill="rgba(255,255,255,.45)">Owner: Automation Engineer</text>
+
+  <!-- UAT label (right section) -->
+  <text x="672" y="1750" text-anchor="middle" font-family="Space Grotesk"
+        font-size="13" font-weight="700" fill="#10B981">UAT</text>
+  <text x="672" y="1786" text-anchor="middle" font-family="Inter"
+        font-size="8" fill="rgba(255,255,255,.45)">Owner: Business User</text>
+
+  <circle cx="288" cy="1740" r="11" fill="#070b14" stroke="#00D4FF" stroke-width="1.3"/>
+  <text x="288" y="1744" text-anchor="middle" font-family="Space Grotesk" font-size="9.5" font-weight="800" fill="#00D4FF">12</text>
+  <circle cx="775" cy="1740" r="11" fill="#070b14" stroke="#10B981" stroke-width="1.3"/>
+  <text x="775" y="1744" text-anchor="middle" font-family="Space Grotesk" font-size="9.5" font-weight="800" fill="#10B981">13</text>
+
+  <!-- "Two Weeks Sprint" label below bar -->
+  <text x="530" y="1814" text-anchor="middle" font-family="Space Grotesk"
+        font-size="11" fill="rgba(139,92,246,.65)" font-weight="600"
+        letter-spacing="1">Two Weeks Sprint</text>
+
+  <!-- Animated dots moving along the bar (left to right) -->
+  <circle r="5" fill="#00D4FF" opacity=".8">
+    <animateMotion dur="2.2s" repeatCount="indefinite"
+      path="M270,1762 H785"/>
+    <animate attributeName="opacity" values="0;1;1;0" dur="2.2s" repeatCount="indefinite"/>
+  </circle>
+  <circle r="4" fill="#10B981" opacity=".7">
+    <animateMotion dur="2.2s" repeatCount="indefinite" begin="-1.1s"
+      path="M270,1762 H785"/>
+    <animate attributeName="opacity" values="0;.8;.8;0" dur="2.2s" repeatCount="indefinite" begin="-1.1s"/>
+  </circle>
+
+  <!-- FAIL branch: from left end of bar → Rework Sprint -->
+  <path d="M270 1762 H160 V1877" stroke="#ef4444" stroke-width="1.5" fill="none"
+        stroke-dasharray="5 3" marker-end="url(#ar)" opacity=".7"/>
+  <text x="185" y="1755" font-family="Space Grotesk" font-size="9"
+        fill="#ef4444" font-weight="700">FAIL</text>
+
+  <!-- REWORK SPRINT -->
+  <g filter="url(#fr)">
+    <rect x="80" y="1850" width="160" height="54" rx="11"
+          fill="#1a0a10" stroke="#ef4444" stroke-width="1.5"/>
+    <text x="160" y="1873" text-anchor="middle" font-family="Space Grotesk"
+          font-size="11.5" font-weight="700" fill="#f87171">🔁 Rework Sprint</text>
+    <text x="160" y="1890" text-anchor="middle" font-family="Inter"
+          font-size="9" fill="#64748b">Fix defects · Retest</text>
+  </g>
+  <!-- Rework loop back to circle top -->
+  <path d="M80 1877 V1570 H270"
+        stroke="#ef4444" stroke-width="1.2" fill="none"
+        stroke-dasharray="4 3" marker-end="url(#av)" opacity=".4"/>
+
+  <!-- PASS: from right tip of bar → Go Live -->
+  <text x="808" y="1756" font-family="Space Grotesk" font-size="9"
+        fill="#10B981" font-weight="700">PASS</text>
+  <path d="M 790 1762 H 830 V 1956 H 684"
+        stroke="#10B981" stroke-width="2" fill="none"
+        marker-end="url(#ag)"/>
+  <circle r="5" fill="#10B981">
+    <animateMotion dur="2.4s" repeatCount="indefinite" begin=".5s"
+      path="M790,1762 H830 V1956 H684"/>
+    <animate attributeName="opacity" values="0;1;1;0" dur="2.4s" repeatCount="indefinite" begin=".5s"/>
+  </circle>
+
+
+  <!-- 13. GO LIVE -->
+  <g filter="url(#fg)">
+    <rect x="376" y="1920" width="308" height="72" rx="14" fill="#061e14" stroke="#10B981" stroke-width="2"/>
+    <rect x="376" y="1920" width="308" height="72" rx="14" fill="none" stroke="#10B981" stroke-width="1.2" opacity=".3">
+      <animate attributeName="opacity" values=".1;.5;.1" dur="3s" repeatCount="indefinite"/>
+    </rect>
+    <text x="530" y="1952" text-anchor="middle" font-family="Space Grotesk" font-size="15" font-weight="800" fill="#10B981">🚀 Go Live</text>
+    <text x="530" y="1970" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#64748b">Solution deployed to production</text>
+    <text x="530" y="1984" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#64748b">Handover to operations · Stakeholder sign-off</text>
+  </g>
+  <circle cx="394" cy="1936" r="12" fill="#061e14" stroke="#10B981" stroke-width="1.4"/>
+  <text x="394" y="1940" text-anchor="middle" font-family="Space Grotesk" font-size="10" font-weight="800" fill="#10B981">14</text>
+  <text x="662" y="1948" font-family="Inter" font-size="8.5" fill="rgba(255,255,255,.4)">Owner:</text>
+  <text x="662" y="1960" font-family="Space Grotesk" font-size="9.5" font-weight="700" fill="#10B981">Automation Engineer</text>
+
+  <!-- Arrow Go Live → Hypercare -->
+  <line x1="530" y1="1992" x2="530" y2="2034" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
+  <circle r="5" fill="#00D4FF">
+    <animateMotion dur="1.4s" repeatCount="indefinite" begin=".4s" path="M530,1992 V2034"/>
+    <animate attributeName="opacity" values="0;1;1;0" dur="1.4s" repeatCount="indefinite" begin=".4s"/>
+  </circle>
+
+  <!-- 14. HYPERCARE SUPPORT -->
+  <g filter="url(#fb)">
+    <rect x="376" y="2034" width="308" height="72" rx="14" fill="#051825" stroke="#00D4FF" stroke-width="1.8"/>
+    <text x="530" y="2064" text-anchor="middle" font-family="Space Grotesk" font-size="14" font-weight="700" fill="#00D4FF">🛡️ Hypercare Support</text>
+    <text x="530" y="2082" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#64748b">Post-go-live monitoring · Hotfixes · User support</text>
+    <text x="530" y="2096" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#64748b">Incident resolution · Stabilisation period</text>
+  </g>
+  <circle cx="394" cy="2050" r="12" fill="#051825" stroke="#00D4FF" stroke-width="1.4"/>
+  <text x="394" y="2054" text-anchor="middle" font-family="Space Grotesk" font-size="10" font-weight="800" fill="#00D4FF">15</text>
+  <text x="662" y="2062" font-family="Inter" font-size="8.5" fill="rgba(255,255,255,.4)">Owner:</text>
+  <text x="662" y="2074" font-family="Space Grotesk" font-size="9.5" font-weight="700" fill="#00D4FF">Automation Engineer</text>
+
+  <!-- Arrow Hypercare → Benefits Tracking -->
+  <line x1="530" y1="2106" x2="530" y2="2148" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
+  <circle r="5" fill="#00D4FF">
+    <animateMotion dur="1.4s" repeatCount="indefinite" begin=".8s" path="M530,2106 V2148"/>
+    <animate attributeName="opacity" values="0;1;1;0" dur="1.4s" repeatCount="indefinite" begin=".8s"/>
+  </circle>
+
+  <!-- 15. BENEFITS TRACKING -->
+  <g filter="url(#fb)">
+    <rect x="348" y="2148" width="364" height="88" rx="14" fill="#051825" stroke="#00D4FF" stroke-width="1.8"/>
+    <text x="530" y="2178" text-anchor="middle" font-family="Space Grotesk" font-size="14" font-weight="700" fill="#00D4FF">📈 Benefits Tracking</text>
+    <text x="530" y="2196" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#64748b">KPI measurement · Hours saved · Cost saved</text>
+    <text x="530" y="2210" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#64748b">ROI validation · Business value report</text>
+    <rect x="366" y="2218" width="58" height="17" rx="8" fill="rgba(0,212,255,.12)" stroke="rgba(0,212,255,.35)" stroke-width="1"/>
+    <text x="395" y="2230" text-anchor="middle" font-family="Space Grotesk" font-size="8.5" font-weight="700" fill="#00D4FF">KPI</text>
+    <rect x="436" y="2218" width="82" height="17" rx="8" fill="rgba(16,185,129,.1)" stroke="rgba(16,185,129,.35)" stroke-width="1"/>
+    <text x="477" y="2230" text-anchor="middle" font-family="Space Grotesk" font-size="8.5" font-weight="700" fill="#10B981">HRS SAVED</text>
+    <rect x="530" y="2218" width="84" height="17" rx="8" fill="rgba(251,146,60,.1)" stroke="rgba(251,146,60,.35)" stroke-width="1"/>
+    <text x="572" y="2230" text-anchor="middle" font-family="Space Grotesk" font-size="8.5" font-weight="700" fill="#fb923c">COST SAVED</text>
+    <rect x="626" y="2218" width="58" height="17" rx="8" fill="rgba(139,92,246,.1)" stroke="rgba(139,92,246,.35)" stroke-width="1"/>
+    <text x="655" y="2230" text-anchor="middle" font-family="Space Grotesk" font-size="8.5" font-weight="700" fill="#a78bfa">ROI</text>
+  </g>
+  <circle cx="366" cy="2166" r="12" fill="#051825" stroke="#00D4FF" stroke-width="1.4"/>
+  <text x="366" y="2170" text-anchor="middle" font-family="Space Grotesk" font-size="10" font-weight="800" fill="#00D4FF">16</text>
+  <text x="726" y="2178" font-family="Inter" font-size="8.5" fill="rgba(255,255,255,.4)">Owner:</text>
+  <text x="726" y="2190" font-family="Space Grotesk" font-size="9.5" font-weight="700" fill="#00D4FF">PL/SPL</text>
+
+  <!-- Arrow Benefits → Continuous Improvement -->
+  <line x1="530" y1="2236" x2="530" y2="2278" stroke="#8B5CF6" stroke-width="2" marker-end="url(#av)"/>
+  <circle r="5" fill="#8B5CF6">
+    <animateMotion dur="1.4s" repeatCount="indefinite" begin="1.2s" path="M530,2236 V2278"/>
+    <animate attributeName="opacity" values="0;1;1;0" dur="1.4s" repeatCount="indefinite" begin="1.2s"/>
+  </circle>
+
+  <!-- 16. CONTINUOUS IMPROVEMENT -->
+  <g filter="url(#fv)">
+    <rect x="348" y="2278" width="364" height="76" rx="14" fill="#0f0b22" stroke="#8B5CF6" stroke-width="2"/>
+    <rect x="348" y="2278" width="364" height="76" rx="14" fill="none" stroke="#8B5CF6" stroke-width="1.2" opacity=".25">
+      <animate attributeName="opacity" values=".1;.4;.1" dur="3.5s" repeatCount="indefinite"/>
+    </rect>
+    <text x="530" y="2310" text-anchor="middle" font-family="Space Grotesk" font-size="14" font-weight="700" fill="#a78bfa">🔄 Continuous Improvement</text>
+    <text x="530" y="2328" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#64748b">Review learnings · Identify next opportunities</text>
+    <text x="530" y="2342" text-anchor="middle" font-family="Inter" font-size="9.5" fill="#64748b">Enhancement requests · Process optimisation</text>
+  </g>
+  <circle cx="394" cy="2296" r="12" fill="#0f0b22" stroke="#8B5CF6" stroke-width="1.4"/>
+  <text x="394" y="2300" text-anchor="middle" font-family="Space Grotesk" font-size="10" font-weight="800" fill="#a78bfa">17</text>
+  <text x="726" y="2308" font-family="Inter" font-size="8.5" fill="rgba(255,255,255,.4)">Owner:</text>
+  <text x="726" y="2320" font-family="Space Grotesk" font-size="8.5" font-weight="700" fill="#a78bfa">All Stakeholders</text>
+
+  <!-- LOOP BACK: CI → Turbo Drive (left-side arc) -->
+  <defs>
+    <linearGradient id="loopg" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="50%" stop-color="#00D4FF"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+  </defs>
+  <path d="M 420 2354 H 100 V 148 H 290"
+        stroke="url(#loopg)" stroke-width="2.2" fill="none"
+        stroke-dasharray="8 5" marker-end="url(#ao)" opacity=".6"/>
+  <!-- Loop label rotated along the left rail -->
+  <text x="88" y="1280" font-family="Space Grotesk" font-size="10"
+        fill="rgba(139,92,246,.55)" font-weight="700" letter-spacing="2"
+        transform="rotate(-90,88,1280)">NEW IDEA LOOP ↑</text>
+  <!-- Animated dot travelling the loop -->
+  <circle r="5.5" fill="#8B5CF6" opacity=".75">
+    <animateMotion dur="7s" repeatCount="indefinite"
+      path="M420,2354 H100 V148 H290"/>
+    <animate attributeName="opacity" values="0;.75;.75;0" dur="7s" repeatCount="indefinite"/>
+  </circle>
+
+  </svg><!-- end SVG -->
+  </div><!-- end svg-wrap -->
+
+
+  <div class="foot">
+    <span>© 2025 ALTEN Engineering Services · EFS Automation Team · EFS Turbo Drive</span>
+    <span style="background:rgba(255,255,255,.03);padding:4px 12px;border-radius:20px;
+          border:1px solid rgba(255,255,255,.05);">Sensitivity: C1-Internal</span>
+  </div>
 </div>
-</body></html>
-        """
-        st.components.v1.html(_wf_html, height=560, scrolling=False)
+
+<script>
+/* Particle canvas */
+(function(){
+  var c=document.getElementById('bg'),ctx=c.getContext('2d'),W,H,pts=[];
+  function resize(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}
+  resize(); window.addEventListener('resize',resize);
+  for(var i=0;i<80;i++) pts.push({
+    x:Math.random()*1920,y:Math.random()*1080,
+    vx:(Math.random()-.5)*.22,vy:(Math.random()-.5)*.22,
+    r:Math.random()*1.5+.3,
+    col:Math.random()>.5?'0,212,255':'139,92,246'
+  });
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    pts.forEach(function(p){
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.x<0)p.x=W; if(p.x>W)p.x=0;
+      if(p.y<0)p.y=H; if(p.y>H)p.y=0;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle='rgba('+p.col+',.5)';
+      ctx.shadowColor='rgba('+p.col+',.35)';
+      ctx.shadowBlur=5;
+      ctx.fill();
+    });
+    for(var i=0;i<pts.length;i++)
+      for(var j=i+1;j<pts.length;j++){
+        var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);
+        if(d<110){
+          ctx.beginPath();
+          ctx.moveTo(pts[i].x,pts[i].y);
+          ctx.lineTo(pts[j].x,pts[j].y);
+          ctx.strokeStyle='rgba(0,212,255,'+(1-d/110)*.07+')';
+          ctx.lineWidth=.4; ctx.shadowBlur=0;
+          ctx.stroke();
+        }
+      }
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+</script>
+</body>
+</html>
+"""
+        st.components.v1.html(_wf_html, height=2900, scrolling=True)
 
     render_copyright()
 
@@ -3114,8 +4181,17 @@ html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-he
   </g>
 
   <!-- VSM → Feasibility (merge back to spine) -->
-  <path d="M765,868 V906 H530 V930" stroke="#10B981" stroke-width="1.5" fill="none"
-        stroke-dasharray="5 3" marker-end="url(#ab)" opacity=".6"/>
+  <path d="M765,868 V900 H610 V930"
+      stroke="#10B981"
+      stroke-width="1.5"
+      fill="none"
+      stroke-dasharray="5 3"
+      marker-end="url(#ab)"
+      opacity=".6"/>
+      <line x1="610" y1="930" x2="530" y2="930"
+      stroke="#10B981"
+      stroke-width="1"
+      opacity=".4"/>
 
   <!-- NO → direct to Feasibility -->
   <line x1="530" y1="764" x2="530" y2="930" stroke="#00D4FF" stroke-width="2"
@@ -3192,7 +4268,7 @@ html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-he
   </g>
 
   <!-- NO → Reject/Park 2 (left) -->
-  <path d="M432,1186 H240 V1236" stroke="#ef4444" stroke-width="1.6" fill="none"
+  <path d="M432,1186 H240 V1261" stroke="#ef4444" stroke-width="1.6" fill="none"
         stroke-dasharray="5 3" marker-end="url(#ar)" opacity=".75"/>
   <g filter="url(#fr)">
     <rect x="160" y="1236" width="160" height="50" rx="10"
@@ -3377,12 +4453,12 @@ html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-he
   <!-- PASS: from right tip of bar → Go Live -->
   <text x="808" y="1756" font-family="Space Grotesk" font-size="9"
         fill="#10B981" font-weight="700">PASS</text>
-  <path d="M 790 1762 H 830 V 1920 H 684"
+  <path d="M 790 1762 H 830 V 1956 H 684"
         stroke="#10B981" stroke-width="2" fill="none"
         marker-end="url(#ag)"/>
   <circle r="5" fill="#10B981">
     <animateMotion dur="2.4s" repeatCount="indefinite" begin=".5s"
-      path="M790,1762 H830 V1920 H684"/>
+      path="M790,1762 H830 V1956 H684"/>
     <animate attributeName="opacity" values="0;1;1;0" dur="2.4s" repeatCount="indefinite" begin=".5s"/>
   </circle>
 
@@ -3414,7 +4490,7 @@ html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-he
   </g>
 
   <!-- Arrow Hypercare → Benefits Tracking -->
-  <line x1="530" y1="2106" x2="530" y2="2148" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
+  <line x1="530" y1="2106" x2="530" y2="2142" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
   <circle r="5" fill="#00D4FF">
     <animateMotion dur="1.4s" repeatCount="indefinite" begin=".8s" path="M530,2106 V2148"/>
     <animate attributeName="opacity" values="0;1;1;0" dur="1.4s" repeatCount="indefinite" begin=".8s"/>
@@ -3437,7 +4513,7 @@ html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-he
   </g>
 
   <!-- Arrow Benefits → Continuous Improvement -->
-  <line x1="530" y1="2236" x2="530" y2="2278" stroke="#8B5CF6" stroke-width="2" marker-end="url(#av)"/>
+  <line x1="530" y1="2236" x2="530" y2="2272" stroke="#8B5CF6" stroke-width="2" marker-end="url(#av)"/>
   <circle r="5" fill="#8B5CF6">
     <animateMotion dur="1.4s" repeatCount="indefinite" begin="1.2s" path="M530,2236 V2278"/>
     <animate attributeName="opacity" values="0;1;1;0" dur="1.4s" repeatCount="indefinite" begin="1.2s"/>
@@ -3466,13 +4542,13 @@ html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-he
         stroke="url(#loopg)" stroke-width="2.2" fill="none"
         stroke-dasharray="8 5" marker-end="url(#ao)" opacity=".6"/>
   <!-- Loop label rotated along the left rail -->
-  <text x="88" y="1280" font-family="Space Grotesk" font-size="10"
+  <text x="58" y="1280" font-family="Space Grotesk" font-size="10"
         fill="rgba(139,92,246,.55)" font-weight="700" letter-spacing="2"
         transform="rotate(-90,88,1280)">NEW IDEA LOOP ↑</text>
   <!-- Animated dot travelling the loop -->
   <circle r="5.5" fill="#8B5CF6" opacity=".75">
     <animateMotion dur="7s" repeatCount="indefinite"
-      path="M420,2354 H100 V148 H290"/>
+      <path d="M 420 2354 H 70 V 148 H 290"/>
     <animate attributeName="opacity" values="0;.75;.75;0" dur="7s" repeatCount="indefinite"/>
   </circle>
 
@@ -3537,10 +4613,14 @@ html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-he
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  PAGE: DEPLOYED TOOLS  (tracker for tools/automations shipped to production)
+#  Everyone can VIEW and give feedback via email to the developing engineer.
+#  Add / Edit / Delete is restricted to the "automation engineer" role.
 # ══════════════════════════════════════════════════════════════════════════════
 def page_deployed_tools():
     page_header("Deployed Tools 🛠️")
-    st.caption("Track every tool / automation that has gone live — with a name and a short description of what it does.")
+    st.caption("Track every tool / automation that has gone live — with a name and a short description of what it does. Anyone can view and send feedback to the engineer; only Automation Engineers can add, edit, or delete entries.")
+
+    is_engineer = (user_role() == "automation engineer")
 
     all_ideas   = get_all()
     completed   = [i for i in all_ideas if i.get("status") == "Completed"]
@@ -3548,9 +4628,12 @@ def page_deployed_tools():
 
     tools = get_deployed_tools()
 
-    tab1, tab2 = st.tabs(["📋 Deployed Tools List", "➕ Add New Tool"])
+    tab_labels = ["📋 Deployed Tools List"]
+    if is_engineer:
+        tab_labels.append("➕ Add New Tool")
+    tabs = st.tabs(tab_labels)
 
-    with tab1:
+    with tabs[0]:
         st.markdown(f"**{len(tools)} tool(s) deployed**")
         search = st.text_input("🔎 Search tools", placeholder="Filter by tool name, description, project…", key="tool_search")
         filtered = tools
@@ -3559,7 +4642,7 @@ def page_deployed_tools():
             filtered = [t for t in tools if sl in (t.get("tool_name","")+t.get("description","")+t.get("project","")).lower()]
 
         if not filtered:
-            st.info("No deployed tools recorded yet — add one under **Add New Tool**.")
+            st.info("No deployed tools recorded yet." + (" Add one under **Add New Tool**." if is_engineer else " Check back later."))
         else:
             import pandas as pd
             df = pd.DataFrame([{
@@ -3575,7 +4658,7 @@ def page_deployed_tools():
             df.to_csv(csv_buf, index=False)
             st.download_button("⬇️ Download CSV", csv_buf.getvalue(), "deployed_tools.csv", "text/csv")
 
-            st.markdown("##### Manage entries")
+            st.markdown("##### Tool Details" + (" & Management" if is_engineer else ""))
             for t in filtered:
                 with st.expander(f"🛠️ {t.get('tool_name','(no name)')}"):
                     st.markdown(f"**Description:** {t.get('description','-')}")
@@ -3583,30 +4666,75 @@ def page_deployed_tools():
                     if t.get("idea_id"):
                         st.markdown(f"**Linked Idea:** {idea_lookup.get(t.get('idea_id'), '(idea not found)')}")
                     st.caption(f"Added: {t.get('created_date','-')}")
-                    if st.button("🗑 Delete", key=f"tool_del_{t.get('id')}"):
-                        delete_deployed_tool(t.get("id"))
-                        st.warning(f"Deleted: {t.get('tool_name','')}")
-                        st.rerun()
 
-    with tab2:
-        st.markdown("##### Add a newly deployed tool")
-        idea_options = [""] + [i["id"] for i in completed]
-        with st.form("add_tool_form", clear_on_submit=True):
-            tool_name   = st.text_input("Tool Name *", placeholder="e.g. Invoice Auto-Extractor")
-            description = st.text_area("Description *", placeholder="What does this tool do? What problem does it solve?")
-            project     = st.selectbox("Project (optional)", [""] + PROJECTS)
-            linked_idea = st.selectbox(
-                "Link to a Completed Idea (optional)", idea_options,
-                format_func=lambda x: "— none —" if not x else idea_lookup.get(x, x),
-            )
-            deployed_by = st.text_input("Deployed By (optional)", value=ss("name",""))
-            if st.form_submit_button("✅ Save Tool"):
-                if not tool_name.strip() or not description.strip():
-                    st.error("Tool Name and Description are required.")
-                else:
-                    add_deployed_tool(tool_name.strip(), description.strip(), linked_idea, project, deployed_by.strip())
-                    st.success(f"✅ Saved: {tool_name.strip()}")
-                    st.rerun()
+                    # ── Feedback via email — available to EVERY user ──────────
+                    if t.get("deployed_by_email"):
+                        fb_url = build_tool_feedback_outlook(t, ss("name",""))
+                        st.markdown(
+                            f'<a href="{fb_url}" target="_blank" class="outlook-btn" '
+                            f'style="background:#0ea5e9;">📧 Give Feedback to {t.get("deployed_by","the Engineer")}</a>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.caption("ℹ️ No engineer email on file for this tool — feedback link unavailable.")
+
+                    # ── Edit / Delete — ENGINEER ROLE ONLY ─────────────────────
+                    if is_engineer:
+                        st.markdown("---")
+                        st.caption("✏️ Edit this entry")
+                        with st.form(f"edit_tool_{t.get('id')}"):
+                            e_name = st.text_input("Tool Name", value=t.get("tool_name",""), key=f"etn_{t.get('id')}")
+                            e_desc = st.text_area("Description", value=t.get("description",""), key=f"ed_{t.get('id')}")
+                            e_proj = st.selectbox(
+                                "Project", [""] + PROJECTS,
+                                index=([""] + PROJECTS).index(t.get("project","")) if t.get("project","") in ([""] + PROJECTS) else 0,
+                                key=f"ep_{t.get('id')}",
+                            )
+                            ec1, ec2 = st.columns(2)
+                            with ec1:
+                                save_clicked = st.form_submit_button("💾 Save Changes", use_container_width=True)
+                            with ec2:
+                                delete_clicked = st.form_submit_button("🗑 Delete", use_container_width=True)
+                            if save_clicked:
+                                if not e_name.strip() or not e_desc.strip():
+                                    st.error("Tool Name and Description are required.")
+                                else:
+                                    update_deployed_tool(t.get("id"), {
+                                        "tool_name": e_name.strip(),
+                                        "description": e_desc.strip(),
+                                        "project": e_proj,
+                                    })
+                                    st.success("✅ Updated.")
+                                    st.rerun()
+                            if delete_clicked:
+                                delete_deployed_tool(t.get("id"))
+                                st.warning(f"Deleted: {t.get('tool_name','')}")
+                                st.rerun()
+
+    if is_engineer:
+        with tabs[1]:
+            st.markdown("##### Add a newly deployed tool")
+            idea_options = [""] + [i["id"] for i in completed]
+            with st.form("add_tool_form", clear_on_submit=True):
+                tool_name   = st.text_input("Tool Name *", placeholder="e.g. Invoice Auto-Extractor")
+                description = st.text_area("Description *", placeholder="What does this tool do? What problem does it solve?")
+                project     = st.selectbox("Project (optional)", [""] + PROJECTS)
+                linked_idea = st.selectbox(
+                    "Link to a Completed Idea (optional)", idea_options,
+                    format_func=lambda x: "— none —" if not x else idea_lookup.get(x, x),
+                )
+                deployed_by = st.text_input("Deployed By", value=ss("name",""), disabled=True)
+                deployed_by_email = st.text_input("Your Email (for feedback)", value=ss("email",""), disabled=True)
+                if st.form_submit_button("✅ Save Tool"):
+                    if not tool_name.strip() or not description.strip():
+                        st.error("Tool Name and Description are required.")
+                    else:
+                        add_deployed_tool(
+                            tool_name.strip(), description.strip(), linked_idea, project,
+                            deployed_by.strip(), deployed_by_email.strip(),
+                        )
+                        st.success(f"✅ Saved: {tool_name.strip()}")
+                        st.rerun()
 
     render_copyright()
 
@@ -3620,7 +4748,35 @@ def page_admin():
 
     with tab1:
         st.markdown(f"**{len(users)} registered users**")
-        for u in users:
+
+        # ── Search by Email ID + Manual Type filter (compact row, same
+        #    styling/spacing as the rest of the app's filter controls) ──────
+        scol1, scol2 = st.columns([2, 1])
+        with scol1:
+            email_search = st.text_input(
+                "Search by Email ID", key="admin_email_search",
+                placeholder="Search by Email ID...", label_visibility="collapsed",
+            )
+        with scol2:
+            manual_type_filter = st.selectbox(
+                "Manual Type", ["All Manual Types"] + MANUAL_TYPES,
+                key="admin_manual_type_filter", label_visibility="collapsed",
+            )
+
+        filtered_users = users
+        if email_search:
+            q = email_search.strip().lower()
+            filtered_users = [u for u in filtered_users if q in u["email"].lower()]
+        if manual_type_filter != "All Manual Types":
+            filtered_users = [u for u in filtered_users if (u.get("manual_type") or "Manual") == manual_type_filter]
+
+        if email_search or manual_type_filter != "All Manual Types":
+            st.caption(f"📌 Showing **{len(filtered_users)}** of **{len(users)}** users after filters.")
+
+        if not filtered_users:
+            st.info("No users match the current search/filter.")
+
+        for u in filtered_users:
             with st.expander(f"📧 {u['email']}  —  {u['role']}"):
                 col1,col2,col3 = st.columns([2,2,1])
                 with col1:
@@ -3634,14 +4790,29 @@ def page_admin():
                     if st.button("🗑 Delete", key=f"del_{u['email']}"):
                         delete_user(u["email"]); st.warning("User deleted.")
 
+                mcol1, mcol2 = st.columns([2,1])
+                with mcol1:
+                    cur_mt = u.get("manual_type") or "Manual"
+                    new_manual_type = st.selectbox(
+                        "Manual Type", MANUAL_TYPES,
+                        index=MANUAL_TYPES.index(cur_mt) if cur_mt in MANUAL_TYPES else 0,
+                        key=f"mtype_{u['email']}",
+                    )
+                with mcol2:
+                    st.write("")
+                    if st.button("💾 Update Manual Type", key=f"updmt_{u['email']}"):
+                        update_manual_type(u["email"], new_manual_type)
+                        st.success("Manual Type updated.")
+
     with tab2:
         with st.form("add_user_form", clear_on_submit=True):
             new_email = st.text_input("Email")
             new_role  = st.selectbox("Role", ROLES_LIST)
+            new_manual_type = st.selectbox("Manual Type", MANUAL_TYPES)
             if st.form_submit_button("➕ Add User"):
                 if new_email:
-                    add_user(new_email.strip().lower(), new_role)
-                    st.success(f"Added {new_email} as {new_role} (default pw: {DEFAULT_PW})")
+                    add_user(new_email.strip().lower(), new_role, new_manual_type)
+                    st.success(f"Added {new_email} as {new_role} · {new_manual_type} (default pw: {DEFAULT_PW})")
                     st.rerun()
 
     with tab3:
@@ -3674,7 +4845,7 @@ def main():
 
     override = ss("_page_override")
     if override == "register":    page_register(); return
-    if override == "change_password": page_change_password(); return
+    if override == "reset_credentials": page_reset_credentials(); return
     if not logged_in():           page_login(); return
 
     # ── Session timeout check (every rerun = activity signal) ─────────────
@@ -3692,7 +4863,11 @@ def main():
                -webkit-background-clip:text;background-clip:text;color:transparent;">
              TURBO DRIVE
           </span>
-          <div style="color:#94a3b8;font-size:10px;margin-top:2px;">Automation Workflow</div>
+                    <div style="color:#64748b;font-size:10px;margin-top:2px;">Automation Workflow</div>
+                    <div style="margin-top:8px;line-height:1.35;">
+                        <div style="font-size:13px;font-weight:700;color:#0f172a;">{ss('name','')}</div>
+                        <div style="font-size:11px;color:#64748b;">{ss('role','')}</div>
+                    </div>
         </div>""", unsafe_allow_html=True)
         st.divider()
 
@@ -3706,11 +4881,6 @@ def main():
         current_page = nav.split(" ",1)[1].strip() if nav else pages[0]
 
         st.divider()
-        st.markdown(f"""
-        <div style="color:#94a3b8;font-size:12px;">
-          👤 <b style="color:#e2e8f0;">{ss('name','')}</b><br>
-          <span style="font-size:11px;">{ss('role','')}</span>
-        </div>""", unsafe_allow_html=True)
 
         # ── Small registered-users count badge (live from Supabase) ────────
         try:
@@ -3729,23 +4899,18 @@ def main():
         # (scoped to the sidebar only — ensures both Change Password and Logout match.)
         st.markdown("""
         <style>
-        [data-testid="stSidebar"] div.stButton > button {background-color:#000 !important; color:#fff !important; border: 1px solid #262626 !important; border-radius:6px !important; padding:6px 10px !important;}
-        [data-testid="stSidebar"] div.stButton > button:hover {opacity:0.85 !important;}
-        [data-testid="stSidebar"] div.stButton > button:first-of-type,
-        [data-testid="stSidebar"] div.stButton > button:nth-of-type(2) {background-color:#000 !important; color:#fff !important;}
-        [data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"] > div {background-color:#000 !important; color:#fff !important; border: 1px solid #262626 !important; border-radius:6px !important;}
-        [data-testid="stSidebar"] [data-testid="stSelectbox"] svg {fill:#fff !important;}
+        [data-testid="stSidebar"] div.stButton > button {background-color:#ffffff !important; color:#0f172a !important; border:1.5px solid #cbd5e1 !important; border-radius:8px !important; min-height:40px !important; padding:8px 20px !important; font-family:'Inter',sans-serif !important; font-size:13px !important; font-weight:600 !important; transition:all .15s ease !important;}
+        [data-testid="stSidebar"] div.stButton > button:hover {border-color:#E30613 !important; box-shadow:0 2px 8px rgba(0,0,0,.08) !important; opacity:1 !important;}
+        [data-testid="stSidebar"] div.stButton > button:active {background-color:#f8fafc !important; border-color:#E30613 !important;}
+        [data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"] > div {background-color:#ffffff !important; color:#0f172a !important; border:1.5px solid #cbd5e1 !important; border-radius:8px !important; min-height:40px !important;}
+        [data-testid="stSidebar"] [data-testid="stSelectbox"] svg {fill:#0f172a !important;}
+        /* PW / Logout row: plain, evenly-spaced buttons — no column "block"
+           borders or backgrounds, consistent on desktop/tablet/mobile. */
+        .sidebar-action-row [data-testid="stHorizontalBlock"]{gap:8px !important;}
+        .sidebar-action-row [data-testid="column"]{background:transparent !important;border:none !important;padding:0 !important;}
+        .sidebar-action-row div.stButton > button{width:100% !important;margin:0 !important;}
         </style>
         """, unsafe_allow_html=True)
-
-        col1,col2 = st.columns(2)
-        with col1:
-            if st.button("🔑 PW", help="Change Password"):
-                st.session_state["_page_override"] = "change_password"; st.rerun()
-        with col2:
-            if st.button("🚪 Logout"):
-                for k in ["email","role","name","theme"]: st.session_state.pop(k,None)
-                st.rerun()
 
         st.markdown("---")
         st.markdown(
@@ -3753,6 +4918,20 @@ def main():
             f'<a href="mailto:{SUPPORT_EMAIL}" style="color:#00AEEF;">{SUPPORT_NAME}</a></p>',
             unsafe_allow_html=True
         )
+
+        # Reset Credentials & Logout live below "Queries?" as one evenly-spaced
+        # horizontal row — plain buttons, not boxed/bordered column blocks.
+        st.markdown('<div class="sidebar-action-row">', unsafe_allow_html=True)
+        pw_col, logout_col = st.columns(2, gap="small")
+        with pw_col:
+            if st.button("🔑 Reset", help="Reset Credentials", use_container_width=True):
+                st.session_state["_page_override"] = "reset_credentials"; st.rerun()
+        with logout_col:
+            if st.button("🚪 Logout", use_container_width=True):
+                for k in ["email","role","name","theme","_page_override","_reset_credentials_choice"]:
+                    st.session_state.pop(k,None)
+                st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
 
     if   current_page == "Dashboard":     page_dashboard()
     elif current_page == "Submit Idea":   page_submit()
