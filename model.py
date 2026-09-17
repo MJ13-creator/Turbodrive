@@ -794,7 +794,7 @@ def apply_theme(theme_name):
         border-radius:20px 20px 0 0;
     }}
     /* light reflection effect */
-    .kpi-card-v2::ar{{
+    .kpi-card-v2::after{{
         content:"";position:absolute;top:0;left:0;right:0;height:45%;
         background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,0));
         border-radius:20px 20px 0 0;pointer-events:none;
@@ -923,7 +923,7 @@ def ss(key, default=None):
 #  triggers a rerun, and that rerun is what resets the timer here.
 # ══════════════════════════════════════════════════════════════════════════════
 SESSION_TIMEOUT_SECONDS = 600   # 5 minutes
-SESSION_WARNING_AT      = 340   # show warning ar 4 minutes (60s before logout)
+SESSION_WARNING_AT      = 340   # show warning after 4 minutes (60s before logout)
 
 def touch_activity():
     st.session_state["_last_activity"] = datetime.now()
@@ -1013,7 +1013,7 @@ def idea_hours(i):
             per_occurrence_savings = baseline - newp
         else:
             per_occurrence_savings = float(fd.get("manual",0) or 0)
-        return per_occurrence_savings * float(fd.get("",0) or 0) * FREQ_MULT.get(fd.get("freq","Daily"),1)
+        return per_occurrence_savings * float(fd.get("fte",0) or 0) * FREQ_MULT.get(fd.get("freq","Daily"),1)
     except: return 0
 
 def kpi_card(value, label, color, sub="", icon=""):
@@ -1197,7 +1197,7 @@ def _render_kpi_row(total, completed, completed_pct, cust_hrs, int_hrs, cust_roi
       z-index:3;
     }
     /* top light reflection */
-    .kpi-card-v2::ar{
+    .kpi-card-v2::after{
       content:"";position:absolute;top:0;left:0;right:0;height:45%;
       background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,0));
       border-radius:22px 22px 0 0;pointer-events:none;
@@ -2125,7 +2125,7 @@ def page_feasibility():
                 per_occurrence = 0.0
                 if baseline and baseline > newp:
                     per_occurrence = baseline - newp
-                annual_saved = per_occurrence * FREQ_MULT.get(freq, FREQ_MULT["Daily"])
+                annual_saved = per_occurrence * 1 * FREQ_MULT.get(freq, FREQ_MULT["Daily"])
                 roi = round((annual_saved / eng_ef) if eng_ef else 0.0, 2)
                 st.info(f"📈 Computed ROI: **{roi}**  —  Savings per occurrence: {per_occurrence} hrs  —  Annual saved hrs: {annual_saved:,.1f}")
 
@@ -2678,7 +2678,11 @@ html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'I
             st_echarts({
                 "backgroundColor": "transparent",
                 "tooltip": {"trigger": "item", "formatter": "{b}: {c} ({d}%)", "textStyle": {"fontSize": 13}},
-                
+                "legend": {
+                    "show": True, "bottom": 0, "left": "center",
+                    "itemWidth": 12, "itemHeight": 12, "itemGap": 14,
+                    "textStyle": {"fontSize": 11, "color": "#111827", "fontWeight": 600},
+                },
                 "series": [{
                     "type": "pie",
                     "radius": ["38%", "78%"],
@@ -2739,7 +2743,7 @@ html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'I
                          "label": {"fontSize": 12, "fontWeight": 600}},
                     ],
                 }]
-            }, height="400px")
+            }, height="440px")
 
         with chart3:
             # ── Region World Map — choropleth, with a readable legend and
@@ -2772,10 +2776,25 @@ html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'I
             active_regions = {k: v for k, v in region_counts.items() if v > 0}
             total_region_count = sum(region_counts.values()) or 1
 
-            # This map fetches real country boundary GeoJSON at render time and
-            # matches each country by name (fuzzy keyword match) to our region
-            # values — so pins/colours land exactly on the correct country
-            # automatically, with no hand-picked pixel coordinates involved.
+            # Switched from a country-boundary choropleth to a geo + bubble
+            # map: India, the USA, the UK and Germany sit at fixed
+            # lat/lon pins sized and colour-scaled by idea count. A
+            # choropleth colours whole country *shapes*, so a small country
+            # like the UK or Germany barely registers next to India/the USA
+            # on a world projection — pins fix that by giving every region
+            # the same visual weight regardless of its geographic size.
+            region_coords = {
+                "India": [78.9629, 20.5937],
+                "UK": [-3.4360, 55.3781],
+                "USA": [-95.7129, 37.0902],
+                "Germany": [10.4515, 51.1657],
+            }
+            scatter_data = [
+                {"name": name, "value": [coord[0], coord[1], region_counts.get(name, 0)],
+                 "roi": region_roi.get(name, 0)}
+                for name, coord in region_coords.items()
+            ]
+
             _region_map_html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"/>
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
@@ -2788,40 +2807,13 @@ html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'I
 <body>
 <div id="wmap"><div id="wmap-msg">Loading map…</div></div>
 <script>
-  var valueByRegion = {json.dumps(region_counts)};
-  var roiByRegion   = {json.dumps(region_roi)};
-  var totalCount    = {total_region_count};
-  var regionKeywords = {{
-    'India':   ['india'],
-    'USA':     ['united states', 'usa'],
-    'UK':      ['united kingdom', 'u.k.'],
-    'Germany': ['germany']
-  }};
+  var scatterData = {json.dumps(scatter_data)};
+  var totalCount  = {total_region_count};
+  var maxVal = Math.max.apply(null, scatterData.map(function(d){{ return d.value[2]; }}).concat([1]));
   fetch('https://cdn.jsdelivr.net/gh/apache/echarts-www@master/asset/map/json/world.json')
     .then(function(r){{ return r.json(); }})
     .then(function(geoJson){{
       echarts.registerMap('world', geoJson);
-      var mapData = (geoJson.features || []).map(function(f){{
-        var nm = (f.properties && (f.properties.name || f.properties.NAME)) || '';
-        var lower = nm.toLowerCase();
-        var val = 0, roi = 0;
-        for (var key in regionKeywords) {{
-          if (regionKeywords[key].some(function(kw){{ return lower.indexOf(kw) >= 0; }})) {{
-            val = valueByRegion[key] || 0;
-            roi = roiByRegion[key] || 0;
-          }}
-        }}
-        var entry = {{ name: nm, value: val, roi: roi }};
-        if (val > 0) {{
-          entry.label = {{
-            show: true, formatter: nm + '\\n' + val, fontSize: 12, fontWeight: 700,
-            color: '#0f172a', backgroundColor: '#ffffff', padding: [4, 8],
-            borderRadius: 6, lineHeight: 15
-          }};
-        }}
-        return entry;
-      }});
-      var maxVal = Math.max.apply(null, Object.keys(valueByRegion).map(function(k){{return valueByRegion[k];}}).concat([1]));
       document.getElementById('wmap').innerHTML = '';
       var chart = echarts.init(document.getElementById('wmap'));
       chart.setOption({{
@@ -2830,24 +2822,37 @@ html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'I
           trigger: 'item',
           textStyle: {{ fontSize: 13 }},
           formatter: function(p){{
-            if (!p.value) return p.name + '<br/>No ideas yet';
-            var pct = totalCount ? ((p.value / totalCount) * 100).toFixed(1) : 0;
-            return '<b>' + p.name + '</b><br/>Ideas: <b>' + p.value + '</b> (' + pct + '%)<br/>ROI: <b>' + (p.data.roi||0) + '</b>';
+            var count = p.value[2];
+            if (!count) return '<b>' + p.name + '</b><br/>No ideas yet';
+            var pct = totalCount ? ((count / totalCount) * 100).toFixed(1) : 0;
+            return '<b>' + p.name + '</b><br/>Ideas: <b>' + count + '</b> (' + pct + '%)<br/>ROI: <b>' + (p.data.roi||0) + '</b>';
           }}
         }},
         visualMap: {{
+          seriesIndex: 0, dimension: 2,
           min: 0, max: maxVal, show: true, calculable: true,
           orient: 'horizontal', left: 'center', bottom: 6,
           text: ['High', 'Low'],
           textStyle: {{ color: '#e2e8f0', fontSize: 11, fontWeight: 600 }},
-          inRange: {{ color: ['#1e293b', '#0891b2', '#22d3ee', '#facc15'] }}
+          inRange: {{ color: ['#334155', '#0891b2', '#22d3ee', '#facc15'] }}
+        }},
+        geo: {{
+          map: 'world', roam: true, zoom: 1.05, center: [-14, 30],
+          itemStyle: {{ areaColor: '#111827', borderColor: '#334155', borderWidth: 0.6 }},
+          emphasis: {{ itemStyle: {{ areaColor: '#1e293b' }}, label: {{ show: false }} }},
+          label: {{ show: false }}
         }},
         series: [{{
-          type: 'map', map: 'world', roam: true, zoom: 1.15,
-          emphasis: {{ label: {{ show: true, color: '#0f172a', fontWeight: 700 }}, itemStyle: {{ areaColor: '#fbbf24' }} }},
-          itemStyle: {{ areaColor: '#111827', borderColor: '#334155', borderWidth: 0.6 }},
-          label: {{ show: false }},
-          data: mapData
+          type: 'scatter', coordinateSystem: 'geo',
+          symbolSize: function(val){{ return val[2] > 0 ? Math.max(28, Math.min(60, 22 + val[2] * 6)) : 12; }},
+          data: scatterData,
+          label: {{
+            show: true, position: 'top', distance: 8,
+            formatter: function(p){{ return p.value[2] > 0 ? (p.name + '\\n' + p.value[2]) : p.name; }},
+            fontSize: 12, fontWeight: 700, color: '#fff',
+            backgroundColor: 'rgba(15,23,42,.85)', padding: [4, 8], borderRadius: 6, lineHeight: 15,
+          }},
+          itemStyle: {{ borderColor: '#fff', borderWidth: 1.5, shadowBlur: 8, shadowColor: 'rgba(0,0,0,.4)' }},
         }}]
       }});
       window.addEventListener('resize', function(){{ chart.resize(); }});
@@ -2857,7 +2862,7 @@ html,body{{width:100%;height:100%;overflow:hidden;background:#000;font-family:'I
     }});
 </script>
 </body></html>"""
-            st.components.v1.html(_region_map_html, height=400, scrolling=False)
+            st.components.v1.html(_region_map_html, height=430, scrolling=False)
 
             if active_regions:
                 st.caption("📍 " + "  ·  ".join(
@@ -3219,7 +3224,7 @@ html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-he
   </g>
 
   <!-- NO branch → Reject/Park (left) -->
-  <path d="M440,462 H240 V538" stroke="#ef4444" stroke-width="1.6" fill="none"
+  <path d="M440,462 H240 V512" stroke="#ef4444" stroke-width="1.6" fill="none"
         stroke-dasharray="5 3" marker-end="url(#ar)" opacity=".75"/>
   <text x="310" y="454" font-family="Space Grotesk" font-size="9.5"
         fill="#ef4444" font-weight="700">NO</text>
@@ -3402,7 +3407,7 @@ html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-he
   <text x="640" y="1162" text-anchor="middle" font-family="Inter" font-size="8.5" fill="rgba(255,255,255,.4)">&amp; PL/SPL</text>
 
   <!-- NO → Reject/Park 2 (left) -->
-  <path d="M432,1186 H240 V1261" stroke="#ef4444" stroke-width="1.6" fill="none"
+  <path d="M432,1186 H240 V1236" stroke="#ef4444" stroke-width="1.6" fill="none"
         stroke-dasharray="5 3" marker-end="url(#ar)" opacity=".75"/>
   <g filter="url(#fr)">
     <rect x="160" y="1236" width="160" height="50" rx="10"
@@ -3582,7 +3587,7 @@ html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-he
   </circle>
 
   <!-- FAIL branch: from left end of bar → Rework Sprint -->
-  <path d="M270 1762 H160 V1877" stroke="#ef4444" stroke-width="1.5" fill="none"
+  <path d="M 270 1762 H 160 V 1850" stroke="#ef4444" stroke-width="1.5" fill="none"
         stroke-dasharray="5 3" marker-end="url(#ar)" opacity=".7"/>
   <text x="185" y="1755" font-family="Space Grotesk" font-size="9"
         fill="#ef4444" font-weight="700">FAIL</text>
@@ -3597,19 +3602,19 @@ html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-he
           font-size="9" fill="#64748b">Fix defects · Retest</text>
   </g>
   <!-- Rework loop back to circle top -->
-  <path d="M80 1877 V1570 H270"
+  <path d="M 160 1850 V 1570 H 270"
         stroke="#ef4444" stroke-width="1.2" fill="none"
         stroke-dasharray="4 3" marker-end="url(#av)" opacity=".4"/>
 
   <!-- PASS: from right tip of bar → Go Live -->
   <text x="808" y="1756" font-family="Space Grotesk" font-size="9"
         fill="#10B981" font-weight="700">PASS</text>
-  <path d="M 790 1762 H 830 V 1956 H 684"
+  <path d="M 790 1762 H 830 V 1920 H 684"
         stroke="#10B981" stroke-width="2" fill="none"
         marker-end="url(#ag)"/>
   <circle r="5" fill="#10B981">
     <animateMotion dur="2.4s" repeatCount="indefinite" begin=".5s"
-      path="M790,1762 H830 V1956 H684"/>
+      path="M790,1762 H830 V1920 H684"/>
     <animate attributeName="opacity" values="0;1;1;0" dur="2.4s" repeatCount="indefinite" begin=".5s"/>
   </circle>
 
@@ -4181,17 +4186,8 @@ html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-he
   </g>
 
   <!-- VSM → Feasibility (merge back to spine) -->
-  <path d="M765,868 V900 H610 V930"
-      stroke="#10B981"
-      stroke-width="1.5"
-      fill="none"
-      stroke-dasharray="5 3"
-      marker-end="url(#ab)"
-      opacity=".6"/>
-      <line x1="610" y1="930" x2="530" y2="930"
-      stroke="#10B981"
-      stroke-width="1"
-      opacity=".4"/>
+  <path d="M765,868 V906 H530 V930" stroke="#10B981" stroke-width="1.5" fill="none"
+        stroke-dasharray="5 3" marker-end="url(#ab)" opacity=".6"/>
 
   <!-- NO → direct to Feasibility -->
   <line x1="530" y1="764" x2="530" y2="930" stroke="#00D4FF" stroke-width="2"
@@ -4268,7 +4264,7 @@ html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-he
   </g>
 
   <!-- NO → Reject/Park 2 (left) -->
-  <path d="M432,1186 H240 V1261" stroke="#ef4444" stroke-width="1.6" fill="none"
+  <path d="M432,1186 H240 V1236" stroke="#ef4444" stroke-width="1.6" fill="none"
         stroke-dasharray="5 3" marker-end="url(#ar)" opacity=".75"/>
   <g filter="url(#fr)">
     <rect x="160" y="1236" width="160" height="50" rx="10"
@@ -4453,12 +4449,12 @@ html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-he
   <!-- PASS: from right tip of bar → Go Live -->
   <text x="808" y="1756" font-family="Space Grotesk" font-size="9"
         fill="#10B981" font-weight="700">PASS</text>
-  <path d="M 790 1762 H 830 V 1956 H 684"
+  <path d="M 790 1762 H 830 V 1920 H 684"
         stroke="#10B981" stroke-width="2" fill="none"
         marker-end="url(#ag)"/>
   <circle r="5" fill="#10B981">
     <animateMotion dur="2.4s" repeatCount="indefinite" begin=".5s"
-      path="M790,1762 H830 V1956 H684"/>
+      path="M790,1762 H830 V1920 H684"/>
     <animate attributeName="opacity" values="0;1;1;0" dur="2.4s" repeatCount="indefinite" begin=".5s"/>
   </circle>
 
@@ -4490,7 +4486,7 @@ html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-he
   </g>
 
   <!-- Arrow Hypercare → Benefits Tracking -->
-  <line x1="530" y1="2106" x2="530" y2="2142" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
+  <line x1="530" y1="2106" x2="530" y2="2148" stroke="#00D4FF" stroke-width="2" marker-end="url(#ab)"/>
   <circle r="5" fill="#00D4FF">
     <animateMotion dur="1.4s" repeatCount="indefinite" begin=".8s" path="M530,2106 V2148"/>
     <animate attributeName="opacity" values="0;1;1;0" dur="1.4s" repeatCount="indefinite" begin=".8s"/>
@@ -4513,7 +4509,7 @@ html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-he
   </g>
 
   <!-- Arrow Benefits → Continuous Improvement -->
-  <line x1="530" y1="2236" x2="530" y2="2272" stroke="#8B5CF6" stroke-width="2" marker-end="url(#av)"/>
+  <line x1="530" y1="2236" x2="530" y2="2278" stroke="#8B5CF6" stroke-width="2" marker-end="url(#av)"/>
   <circle r="5" fill="#8B5CF6">
     <animateMotion dur="1.4s" repeatCount="indefinite" begin="1.2s" path="M530,2236 V2278"/>
     <animate attributeName="opacity" values="0;1;1;0" dur="1.4s" repeatCount="indefinite" begin="1.2s"/>
@@ -4542,13 +4538,13 @@ html,body{background:#070b14;color:#e2e8f0;font-family:'Inter',sans-serif;min-he
         stroke="url(#loopg)" stroke-width="2.2" fill="none"
         stroke-dasharray="8 5" marker-end="url(#ao)" opacity=".6"/>
   <!-- Loop label rotated along the left rail -->
-  <text x="58" y="1280" font-family="Space Grotesk" font-size="10"
+  <text x="88" y="1280" font-family="Space Grotesk" font-size="10"
         fill="rgba(139,92,246,.55)" font-weight="700" letter-spacing="2"
         transform="rotate(-90,88,1280)">NEW IDEA LOOP ↑</text>
   <!-- Animated dot travelling the loop -->
   <circle r="5.5" fill="#8B5CF6" opacity=".75">
     <animateMotion dur="7s" repeatCount="indefinite"
-      <path d="M 420 2354 H 70 V 148 H 290"/>
+      path="M420,2354 H100 V148 H290"/>
     <animate attributeName="opacity" values="0;.75;.75;0" dur="7s" repeatCount="indefinite"/>
   </circle>
 
