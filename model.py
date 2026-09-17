@@ -40,7 +40,7 @@ MANUAL_TYPES = ["Manual", "Self-Registered", "Bulk Import", "System Default"]
 DEFAULT_PW = "admin123"
 
 SUPPORT_NAME  = "Manoj JAGADEESH, Raja AMMAIAPPAN, Naveen KONNUR"
-SUPPORT_EMAIL = "manoj.jagadeesh@alten-india.com"
+SUPPORT_EMAIL = "manoj.jagadeesh@alten.com"
 
 ALTEN_LOGO_URL = "https://www.alten.com/wp-content/uploads/2019/01/favicon-alten.png"
 
