@@ -1923,7 +1923,8 @@ def page_pl_assignment():
                         st.markdown(f"**Submitted by:** {idea.get('name','-')}")
                         st.markdown(f"**Project:** {idea.get('project','-')} | **Category:** {idea.get('category','-')}")
                         st.markdown(f"**Customer:** {idea.get('customer','-')} | **Region:** {idea.get('region','-')}")
-                        st.markdown(f"**Description:** {idea.get('idea','-')}")
+                        st.markdown("**Idea Description:**")
+                        st.text(idea.get("idea") or "-")
                     with c2:
                         st.markdown(f"**PL/SPL:** {idea.get('pl_name','-')}")
                         st.markdown(f"**Submitted:** {idea.get('created_date','-')[:10]}")
@@ -2093,6 +2094,8 @@ def page_feasibility():
               <b>PL / SPL:</b> {idea.get('pl_name','-')}<br>
               <b>Category:</b> {idea.get('category','-')}
             </div>""", unsafe_allow_html=True)
+            st.markdown("**Idea Description:**")
+            st.text(idea.get("idea") or "-")
             if idea.get("delivery_date"):
                 st.caption(f"📅 Provisional delivery: {idea['delivery_date']}")
             if draft:
