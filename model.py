@@ -1661,7 +1661,7 @@ def page_register():
                 st.error("🚫 Free-mail providers (Gmail, Yahoo, Hotmail, Rediff, etc.) are not allowed. Please use your organisational email.")
             elif pw != cpw:
                 st.error("Passwords do not match.")
-            elif len(pw) < 4:
+            elif len(pw)< 4:
                 st.error("Password must be at least 4 characters.")
             else:
                 resp = get_supabase().table("users").select("email").eq("email",email.lower()).execute()
